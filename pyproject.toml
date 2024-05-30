@@ -1,0 +1,41 @@
+# Based on tractolearn pyproject.toml
+[build-system]
+requires = [
+    "setuptools >= 66",
+    "wheel",
+    "setuptools_scm >= 6.4",
+]
+
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tractoencoder_gsoc"
+version = "0.0.1"
+authors = [
+    {name = "Iñigo Tellaetxe Elorriaga"}, {email = "inigotellaetxe@gmail.com"}
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Medical Science Apps.",
+]
+dependencies = [
+    # common dependencies
+    "importlib-metadata == 7.1.0",
+    "h5py == 3.11.0",
+    "matplotlib == 3.9.0",
+    "numpy == 1.26.4",
+    "pandas == 2.2.2",
+    "tqdm == 4.66.4",
+    "dipy == 1.9.0",
+    "fury == 0.8.0",
+    "nibabel == 5.2.1",
+    "tensorflow == 2.16.1",
+    "ipykernel == 6.29.4",
+    "pre-commit == 3.7.1",
+    "ruff == 0.4.6"
+]
+
+readme ="README.md"
+requires-python = ">=3.10"
