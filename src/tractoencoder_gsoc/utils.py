@@ -1,13 +1,11 @@
+# Based on the original code from the tractolearn repository: git@github.com:scil-vital/tractolearn.git
+
 import tensorflow as tf
 import os
 import numpy as np
 import nibabel as nib
-from tractolearn.models.track_ae_cnn1d_incr_feat_strided_conv_fc_upsamp_reflect_pad_pytorch import IncrFeatStridedConvFCUpsampReflectPadAE as AEModel
 
 import sys
-
-import torch
-from torch import nn, optim
 
 from dipy.io.stateful_tractogram import Space
 from dipy.io.streamline import load_tractogram
@@ -35,195 +33,196 @@ def read_data(tractogram_fname, img_fname):
     return strml
 
 
-def prepare_tensor_from_file(tractogram_fname, img_fname):
+def prepare_tensor_from_file(tractogram_fname: str, img_fname: str) -> tf.Tensor:
     strml = read_data(tractogram_fname, img_fname)
 
     # Dump streamline data to array
     strml_data = np.vstack([strml[i][np.newaxis,] for i in range(len(strml))])
 
-    # Build a torch.Tensor using the streamline data: should be an array that
+    # Build a tf.Tensor using the streamline data: should be an array that
     # has N rows, each row having 256 columns
 
-    strml_tensor = torch.as_tensor(strml_data)
-    # PyTorch uses the channel first convention, so we need to reshape the data
-    strml_tensor = strml_tensor.permute(0, 2, 1)
+    strml_tensor = tf.Tensor(strml_data)
 
     return strml_tensor
 
 
-def test_ae_model(tractogram_fname, img_fname, device):
-    # tractogram_fname is your trk, img_fname is the corresponding nii.gz anatomical reference file (e.g. T1w)
-    strml_tensor = prepare_tensor_from_file(tractogram_fname, img_fname)
-    strml_tensor = strml_tensor.to(device)
+# TODO: Translate function to TF
+# def test_ae_model(tractogram_fname: str, img_fname: str, device):
+#     # tractogram_fname is your trk, img_fname is the corresponding nii.gz anatomical reference file (e.g. T1w)
+#     strml_tensor = prepare_tensor_from_file(tractogram_fname, img_fname)
+#     strml_tensor = strml_tensor.to(device)
 
-    # Instantiate the model
-    model = AEModel()
-    # A full forward pass
-    y = model(strml_tensor)
+#     # Instantiate the model
+#     model = AEModel()
+#     # A full forward pass
+#     y = model(strml_tensor)
 
-    print(f"Input shape: {strml_tensor.shape}")
-    print(f"Model: {model}")
-    print(f"Output shape: {y.shape}")
+#     print(f"Input shape: {strml_tensor.shape}")
+#     print(f"Model: {model}")
+#     print(f"Output shape: {y.shape}")
 
+# TODO: Translate function to TF
+# def test_ae_model_loader(tractogram_fname, img_fname, device):
+#     # Use a loader for large datasets with which doing a complete forward and
+#     # backward pass would not be possible due to GPU memory constraints.
+#     # Note that in this case, all data is sent to the GPU, which may not be
+#     # possible for large tractography files. That's why we used to use HDF5
+#     # files and custom data loaders that would only fetch the batch size data
+#     # from them.
 
-def test_ae_model_loader(tractogram_fname, img_fname, device):
-    # Use a loader for large datasets with which doing a complete forward and
-    # backward pass would not be possible due to GPU memory constraints.
-    # Note that in this case, all data is sent to the GPU, which may not be
-    # possible for large tractography files. That's why we used to use HDF5
-    # files and custom data loaders that would only fetch the batch size data
-    # from them.
+#     # tractogram_fname is your trk, img_fname is the corresponding nii.gz anatomical reference file (e.g. T1w)
+#     strml_tensor = prepare_tensor_from_file(tractogram_fname, img_fname)
+#     strml_tensor = strml_tensor.to(device)
 
-    # tractogram_fname is your trk, img_fname is the corresponding nii.gz anatomical reference file (e.g. T1w)
-    strml_tensor = prepare_tensor_from_file(tractogram_fname, img_fname)
-    strml_tensor = strml_tensor.to(device)
+#     # Build a data loader
+#     batch_size = 1000  # your batch_size
+#     loader = torch.utils.data.DataLoader(
+#         strml_tensor, batch_size=batch_size, shuffle=False
+#     )
 
-    # Build a data loader
-    batch_size = 1000  # your batch_size
-    loader = torch.utils.data.DataLoader(
-        strml_tensor, batch_size=batch_size, shuffle=False
-    )
+#     # Instantiate the model
+#     model = AEModel()
 
-    # Instantiate the model
-    model = AEModel()
+#     reconstruction_loss = nn.MSELoss(reduction="sum")
+#     loss = 0
 
-    reconstruction_loss = nn.MSELoss(reduction="sum")
-    loss = 0
+#     strml_data = []
+#     for _, data in enumerate(loader):
 
-    strml_data = []
-    for _, data in enumerate(loader):
+#         # Forward pass and compute loss
+#         y = model(data)
+#         batch_loss = reconstruction_loss(y, data)
+#         loss += batch_loss.item()
 
-        # Forward pass and compute loss
-        y = model(data)
-        batch_loss = reconstruction_loss(y, data)
-        loss += batch_loss.item()
+#         # Undo the permutation
+#         y = y.permute(0, 2, 1).detach().cpu().numpy()
+#         strml_data.extend(y)
 
-        # Undo the permutation
-        y = y.permute(0, 2, 1).detach().cpu().numpy()
-        strml_data.extend(y)
+#     # Normalize the loss value to the size of the dataset
+#     loss /= len(loader.dataset)
 
-    # Normalize the loss value to the size of the dataset
-    loss /= len(loader.dataset)
+#     strml_rec = Streamlines(strml_data)
 
-    strml_rec = Streamlines(strml_data)
+#     print(f"Input shape: {strml_tensor.shape}")
+#     print(f"Model: {model}")
+#     print(
+#         f"Output shape: {strml_rec.shape}"
+#     )  # Should be the same as input. Adapt, not sure if Streamlines has shape property
 
-    print(f"Input shape: {strml_tensor.shape}")
-    print(f"Model: {model}")
-    print(
-        f"Output shape: {strml_rec.shape}"
-    )  # Should be the same as input. Adapt, not sure if Streamlines has shape property
-
-    # Eventually, return strml_rec, loss in your scripts to check the loss and
-    # write the reconstructed streamlines if needed for visual inspection
-
-
-def load_model_weights(weights_fname, device, lr, weight_decay):
-    # Instantiate the model
-    model = AEModel()
-
-    # Create the optimizer
-    optimizer = optim.Adam(
-        model.parameters(),
-        lr=lr,
-        weight_decay=weight_decay,
-    )
-
-    checkpoint = torch.load(weights_fname, map_location=device)
-    model.load_state_dict(checkpoint["state_dict"])
-
-    optimizer.load_state_dict(checkpoint["optimizer"])
-    epoch = model.load_state_dict(checkpoint["epoch"])  # best epoch
-    lowest_loss = checkpoint["lowest_loss"]
-
-    return model, optimizer, epoch, lowest_loss
+#     # Eventually, return strml_rec, loss in your scripts to check the loss and
+#     # write the reconstructed streamlines if needed for visual inspection
 
 
-def train_ae_model(train_tractogram_fname, valid_tractogram_fname, img_fname, device, lr, weight_decay, epochs, weights_fname):
-    # Use a loader for large datasets that cannot be entirely hold in the GPU
-    # memory
+# TODO: Translate function to TF
+# def load_model_weights(weights_fname, device, lr, weight_decay):
+#     # Instantiate the model
+#     model = AEModel()
 
-    # tractogram_fname is your trk, img_fname is the corresponding nii.gz anatomical reference file (e.g. T1w)
-    strml_tensor_train = prepare_tensor_from_file(train_tractogram_fname, img_fname)
-    strml_tensor_valid = prepare_tensor_from_file(valid_tractogram_fname, img_fname)
+#     # Create the optimizer
+#     optimizer = optim.Adam(
+#         model.parameters(),
+#         lr=lr,
+#         weight_decay=weight_decay,
+#     )
 
-    strml_tensor_train = strml_tensor_train.to(device)
-    strml_tensor_valid = strml_tensor_valid.to(device)
+#     checkpoint = torch.load(weights_fname, map_location=device)
+#     model.load_state_dict(checkpoint["state_dict"])
 
-    # Build the data loaders
-    batch_size = 1000  # your batch_size
-    train_loader = torch.utils.data.DataLoader(
-        strml_tensor_train, batch_size=batch_size, shuffle=False
-    )
-    valid_loader = torch.utils.data.DataLoader(
-        strml_tensor_valid, batch_size=batch_size, shuffle=False
-    )
+#     optimizer.load_state_dict(checkpoint["optimizer"])
+#     epoch = model.load_state_dict(checkpoint["epoch"])  # best epoch
+#     lowest_loss = checkpoint["lowest_loss"]
 
-    # Instantiate the model
-    model = AEModel()
+#     return model, optimizer, epoch, lowest_loss
 
-    # Create the optimizer
-    optimizer = optim.Adam(
-        model.parameters(),
-        lr=lr,
-        weight_decay=weight_decay,
-    )
 
-    # Define the loss function
-    reconstruction_loss = nn.MSELoss(reduction="sum")
+# # TODO: Translate function to TF
+# def train_ae_model(train_tractogram_fname, valid_tractogram_fname, img_fname, device, lr, weight_decay, epochs, weights_fname):
+#     # Use a loader for large datasets that cannot be entirely hold in the GPU
+#     # memory
 
-    # As our loss is an MSE, worst possible loss is +infinity (or a very large number)
-    lowest_loss = sys.float_info.max
+#     # tractogram_fname is your trk, img_fname is the corresponding nii.gz anatomical reference file (e.g. T1w)
+#     strml_tensor_train = prepare_tensor_from_file(train_tractogram_fname, img_fname)
+#     strml_tensor_valid = prepare_tensor_from_file(valid_tractogram_fname, img_fname)
 
-    # Train model
-    for epoch in range(epochs):
-        # model.train()  # not sure if entirely necessary. We did not used to use it at the time.
-        train_loss = 0
-        valid_loss = 0
-        # Train split
-        for _, train_data in enumerate(train_loader):
+#     strml_tensor_train = strml_tensor_train.to(device)
+#     strml_tensor_valid = strml_tensor_valid.to(device)
 
-            optimizer.zero_grad()
-            train_y = model(train_data)
-            batch_loss = reconstruction_loss(train_y, train_data)
+#     # Build the data loaders
+#     batch_size = 1000  # your batch_size
+#     train_loader = torch.utils.data.DataLoader(
+#         strml_tensor_train, batch_size=batch_size, shuffle=False
+#     )
+#     valid_loader = torch.utils.data.DataLoader(
+#         strml_tensor_valid, batch_size=batch_size, shuffle=False
+#     )
 
-            # Compute gradients and optimize model
-            batch_loss.backward()
-            train_loss += batch_loss.item()
-            optimizer.step()
+#     # Instantiate the model
+#     model = AEModel()
 
-        # Normalize the loss value to the size of the dataset
-        train_loss /= len(train_loader.dataset)
+#     # Create the optimizer
+#     optimizer = optim.Adam(
+#         model.parameters(),
+#         lr=lr,
+#         weight_decay=weight_decay,
+#     )
 
-        # Validate
-        model.eval()
-        with torch.no_grad():
-            for _, valid_data in enumerate(valid_loader):
+#     # Define the loss function
+#     reconstruction_loss = nn.MSELoss(reduction="sum")
 
-                valid_y = model(valid_data)
-                batch_loss = reconstruction_loss(valid_y, valid_data)
-                valid_loss += batch_loss.item()
+#     # As our loss is an MSE, worst possible loss is +infinity (or a very large number)
+#     lowest_loss = sys.float_info.max
 
-            # Normalize the loss value to the size of the dataset
-            valid_loss /= len(valid_loader.dataset)
+#     # Train model
+#     for epoch in range(epochs):
+#         # model.train()  # not sure if entirely necessary. We did not used to use it at the time.
+#         train_loss = 0
+#         valid_loss = 0
+#         # Train split
+#         for _, train_data in enumerate(train_loader):
 
-            # Save model and weights if loss is lower. Note that in our case the
-            # metric used to determine if a model is better is the
-            # reconstruction loss, but in other tasks we may choose a different
-            # metric, and the criterion might be "higher is better" (e.g. in a
-            # segmentation task, where the loss has been defined Dice+CE, we
-            # could define the validation split Dice as the metric).
-            if valid_loss < lowest_loss:
-                lowest_loss = valid_loss
-                # Note that we are storing the best epoch here, but not the last
-                # epoch: thus, if the training is stopped, it will resume from
-                # the best epoch. It should resume from the last epoch. But
-                # at the time, we did not save this information. It should be
-                # easy to store an additional key, value pair, as this is simply
-                # a dictionary.
-                state = {
-                    "epoch": epoch,
-                    "state_dict": model.state_dict(),
-                    "lowest_loss": lowest_loss,
-                    "optimizer": optimizer.state_dict(),
-                }
-                torch.save(state, weights_fname)
+#             optimizer.zero_grad()
+#             train_y = model(train_data)
+#             batch_loss = reconstruction_loss(train_y, train_data)
+
+#             # Compute gradients and optimize model
+#             batch_loss.backward()
+#             train_loss += batch_loss.item()
+#             optimizer.step()
+
+#         # Normalize the loss value to the size of the dataset
+#         train_loss /= len(train_loader.dataset)
+
+#         # Validate
+#         model.eval()
+#         with torch.no_grad():
+#             for _, valid_data in enumerate(valid_loader):
+
+#                 valid_y = model(valid_data)
+#                 batch_loss = reconstruction_loss(valid_y, valid_data)
+#                 valid_loss += batch_loss.item()
+
+#             # Normalize the loss value to the size of the dataset
+#             valid_loss /= len(valid_loader.dataset)
+
+#             # Save model and weights if loss is lower. Note that in our case the
+#             # metric used to determine if a model is better is the
+#             # reconstruction loss, but in other tasks we may choose a different
+#             # metric, and the criterion might be "higher is better" (e.g. in a
+#             # segmentation task, where the loss has been defined Dice+CE, we
+#             # could define the validation split Dice as the metric).
+#             if valid_loss < lowest_loss:
+#                 lowest_loss = valid_loss
+#                 # Note that we are storing the best epoch here, but not the last
+#                 # epoch: thus, if the training is stopped, it will resume from
+#                 # the best epoch. It should resume from the last epoch. But
+#                 # at the time, we did not save this information. It should be
+#                 # easy to store an additional key, value pair, as this is simply
+#                 # a dictionary.
+#                 state = {
+#                     "epoch": epoch,
+#                     "state_dict": model.state_dict(),
+#                     "lowest_loss": lowest_loss,
+#                     "optimizer": optimizer.state_dict(),
+#                 }
+#                 torch.save(state, weights_fname)
