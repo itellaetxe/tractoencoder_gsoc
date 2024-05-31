@@ -168,8 +168,8 @@ class IncrFeatStridedConvFCUpsampReflectPadAE():
                                 kernel_size=self.kernel_size)
         self.compile()
 
-    def call(self, x):
-        self.model(x)
+    def __call__(self, x):
+        return self.model(x)
 
     def compile(self, optimizer="adam", loss=None, metrics=None, loss_weights=None):
         """Configure the model for training
