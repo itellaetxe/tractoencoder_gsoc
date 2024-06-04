@@ -1,4 +1,4 @@
-# Based on the original code from the tractolearn repository: git@github.com:scil-vital/tractolearn.git
+# Adapted from the original code from the tractolearn repository: git@github.com:scil-vital/tractolearn.git
 
 import tensorflow as tf
 import os
@@ -12,9 +12,13 @@ from dipy.io.streamline import load_tractogram
 from dipy.tracking.streamline import Streamlines  # same as nibabel.streamlines.ArraySequence
 
 
-def read_data(tractogram_fname, img_fname):
+def read_data(tractogram_fname: str, img_fname: str = None):
     # Load the anatomical data
-    img = nib.load(img_fname)
+    if img_fname is not None:
+        img = nib.load(img_fname)
+        img_header = img.header
+    else:
+        img_header = nib.Nifti1Header()
 
     # Load tractography data (assumes everything is resampled to 256 points)
     # from a TRK file
@@ -23,7 +27,7 @@ def read_data(tractogram_fname, img_fname):
     bbox_valid_check = True
     tractogram = load_tractogram(
         tractogram_fname,
-        img.header,
+        img_header,
         to_space=to_space,
         trk_header_check=trk_header_check,
         bbox_valid_check=bbox_valid_check,
@@ -45,6 +49,26 @@ def prepare_tensor_from_file(tractogram_fname: str, img_fname: str) -> tf.Tensor
     strml_tensor = tf.Tensor(strml_data)
 
     return strml_tensor
+
+
+def save_tractogram(streamlines: np.array,
+                    tractogram_fname: str,
+                    img_fname: str = None) -> None:
+    # Load the anatomical data
+    if img_fname is not None:
+        img = nib.load(img_fname)
+        img_header = img.header
+    else:
+        img_header = nib.streamlines.trk.TrkFile.create_empty_header()
+
+    # Save tractography data
+    tractogram = nib.streamlines.Tractogram(streamlines=streamlines,
+                                            affine_to_rasmm=np.eye(4))
+    trkfile = nib.streamlines.TrkFile(tractogram, img_header)
+    nib.streamlines.save(tractogram=trkfile,
+                         filename=tractogram_fname)
+
+    return None
 
 
 # TODO: Translate function to TF

@@ -1,5 +1,4 @@
 import numpy as np
-import tensorflow as tf
 
 from tractoencoder_gsoc import ae_model
 
@@ -13,10 +12,12 @@ if __name__ == '__main__':
     model.summary()
 
     # Example of using the model
-    input_data = np.random.randn(100, 256, 3)
+    input_data = np.random.randn(1, 256, 3)
+    # Duplicate the input_data along the batch axis 100 times
+    input_data = np.tile(input_data, (100, 1, 1))
 
     output = model(input_data)
     print(output.shape)
 
-    # Try the train method
-    model.fit(x=input_data, y=input_data, epochs=10, batch_size=5)
+    # Try the train method (x and y should be the same)
+    model.fit(x=input_data, y=input_data, epochs=200, batch_size=20)
