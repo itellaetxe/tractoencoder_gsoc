@@ -2,6 +2,7 @@ import argparse
 import os
 import numpy as np
 import nibabel as nib
+import subprocess
 
 from tractoencoder_gsoc import utils as utils
 from tractoencoder_gsoc import ae_model
@@ -42,7 +43,7 @@ def process_arguments() -> argparse.Namespace:
     return args
 
 
-def write_model_specs(spec_file: str) -> None:
+def write_model_specs(spec_file: str, model) -> None:
     if not os.path.exists(os.path.dirname(spec_file)):
         os.makedirs(os.path.dirname(spec_file))
 
@@ -58,7 +59,7 @@ def write_model_specs(spec_file: str) -> None:
         for weight in model.model.weights:
             f.write(f"## Layer: {weight.path}\n")
 
-    print(f"INFO: Model specs written to {spec_file}.")
+    print(f"INFO: Model specs written to {spec_file}")
 
     return None
 
@@ -84,13 +85,25 @@ if __name__ == "__main__":
     y = model(input_data).numpy()
 
     # Save the tractogram
-    trk_fname = os.path.join(os.path.dirname(args.output_model), "output.trk")
-    print(f"INFO: Saving the reconstructed tractogram at {trk_fname}.")
+    output_trk_fname = os.path.join(os.path.dirname(args.output_model), "output.trk")
+    print(f"INFO: Saving the reconstructed tractogram at {output_trk_fname}")
     utils.save_tractogram(streamlines=y,
                           img_fname=args.input_anat,
-                          tractogram_fname=trk_fname)
+                          tractogram_fname=output_trk_fname)
 
     # Write the model specs to a file for future reference
     spec_file = os.path.join(os.path.dirname(args.output_model), "model_specs.txt")
 
-    write_model_specs(spec_file)
+    write_model_specs(spec_file=spec_file, model=model)
+
+    # Save a screenshot of the input and the output using dipy_horizon
+    input_screenshot_fname = os.path.join(os.path.dirname(args.output_model), "input_view.png")
+    output_screenshot_fname = os.path.join(os.path.dirname(args.output_model), "output_view.png")
+    print(f"INFO: Saving the input screenshot at {input_screenshot_fname}")
+
+    # Just in case if fury is not installed
+    subprocess.run(["uv pip install -U fury"], shell=True)
+    command = f"dipy_horizon {args.input_trk} --stealth --out_stealth_png {input_screenshot_fname}"
+    subprocess.run(command, shell=True)
+    command = f"dipy_horizon {output_trk_fname} --stealth --out_stealth_png {output_screenshot_fname}"
+    subprocess.run(command, shell=True)
