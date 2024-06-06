@@ -14,9 +14,10 @@ if __name__ == '__main__':
     # Example of using the model
     input_data = np.random.randn(1, 256, 3)
     # Duplicate the input_data along the batch axis 100 times
-    input_data = np.tile(input_data, (100, 1, 1))
+    input_data = np.tile(input_data, (50, 1, 1))
 
     output = model(input_data)
+    model.model.compile()
     print(output.shape)
 
     # Try the train method (x and y should be the same)

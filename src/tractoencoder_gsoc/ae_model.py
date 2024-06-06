@@ -1,9 +1,16 @@
+from math import sqrt
 import numpy as np
 import nibabel as nib
 import tensorflow as tf
 import keras
-from keras import layers, Sequential, Layer, Model
+from keras import layers, Sequential, Layer, Model, initializers
 
+
+dict_kernel_size_flatten_encoder_shape = {1 : 12288,
+                                          2: 10240,
+                                          3: 8192,
+                                          4: 7168,
+                                          5: 5120}
 # TODO (general): Add typing suggestions to methods where needed/advised/possible
 # TODO (general): Add docstrings to all functions and mthods
 class ReflectionPadding1D(Layer):
@@ -28,33 +35,70 @@ class Encoder(Layer):
         self.latent_space_dims = latent_space_dims
         self.kernel_size = kernel_size
 
+        # Weight and bias initializers for Conv1D layers (matching PyTorch initialization)
+        # Link: https://pytorch.org/docs/stable/generated/torch.nn.Conv1d.html (Variables section)
+        # Weights
+        self.k_conv1d_weights_initializer = sqrt(1 / (3 * self.kernel_size))
+        self.conv1d_weights_initializer = initializers.RandomUniform(minval=-self.k_conv1d_weights_initializer,
+                                                                     maxval=self.k_conv1d_weights_initializer,
+                                                                     seed=2208)
+        # Biases
+        self.k_conv1d_biases_initializer = self.k_conv1d_weights_initializer
+        self.conv1d_biases_initializer = self.conv1d_weights_initializer
+
         self.encod_conv1 = pre_pad(
             layers.Conv1D(32, self.kernel_size, strides=2, padding='valid',
-                          name="encoder_conv1")
+                          name="encoder_conv1",
+                          kernel_initializer=self.conv1d_weights_initializer,
+                          bias_initializer=self.conv1d_biases_initializer)
         )
         self.encod_conv2 = pre_pad(
             layers.Conv1D(64, self.kernel_size, strides=2, padding='valid',
-                          name="encoder_conv2")
+                          name="encoder_conv2",
+                          kernel_initializer=self.conv1d_weights_initializer,
+                          bias_initializer=self.conv1d_biases_initializer)
         )
         self.encod_conv3 = pre_pad(
             layers.Conv1D(128, self.kernel_size, strides=2, padding='valid',
-                          name="encoder_conv3")
+                          name="encoder_conv3",
+                          kernel_initializer=self.conv1d_weights_initializer,
+                          bias_initializer=self.conv1d_biases_initializer)
         )
         self.encod_conv4 = pre_pad(
             layers.Conv1D(256, self.kernel_size, strides=2, padding='valid',
-                          name="encoder_conv4")
+                          name="encoder_conv4",
+                          kernel_initializer=self.conv1d_weights_initializer,
+                          bias_initializer=self.conv1d_biases_initializer)
         )
         self.encod_conv5 = pre_pad(
             layers.Conv1D(512, self.kernel_size, strides=2, padding='valid',
-                          name="encoder_conv5")
+                          name="encoder_conv5",
+                          kernel_initializer=self.conv1d_weights_initializer,
+                          bias_initializer=self.conv1d_biases_initializer)
         )
         self.encod_conv6 = pre_pad(
             layers.Conv1D(1024, self.kernel_size, strides=1, padding='valid',
-                          name="encoder_conv6")
+                          name="encoder_conv6",
+                          kernel_initializer=self.conv1d_weights_initializer,
+                          bias_initializer=self.conv1d_biases_initializer)
         )
 
         self.flatten = layers.Flatten(name='flatten')
-        self.fc1 = layers.Dense(self.latent_space_dims, name='fc1')
+
+        # For Dense layers
+        # Link: https://pytorch.org/docs/stable/generated/torch.nn.Linear.html (Variables section)
+        # Weights
+        self.k_dense_weights_initializer = sqrt(1 / dict_kernel_size_flatten_encoder_shape[self.kernel_size])
+        self.dense_weights_initializer = initializers.RandomUniform(minval=-self.k_dense_weights_initializer,
+                                                                    maxval=self.k_dense_weights_initializer,
+                                                                    seed=2208)
+        # Biases
+        self.k_dense_biases_initializer = self.k_dense_weights_initializer
+        self.dense_biases_initializer = self.dense_weights_initializer
+
+        self.fc1 = layers.Dense(self.latent_space_dims, name='fc1',
+                                kernel_initializer=self.dense_weights_initializer,
+                                bias_initializer=self.dense_biases_initializer)
 
     def call(self, input_data):
         x = input_data
@@ -174,34 +218,21 @@ class IncrFeatStridedConvFCUpsampReflectPadAE():
     def __call__(self, x):
         return self.model(x)
 
-    def compile(self, optimizer="adam", loss="mean_squared_error",
-                metrics=None, loss_weights=None):
-        """Configure the model for training
-        # TODO: Complete docstring
-        Args:
-            optimizer (str, optional): _description_. Defaults to "adam".
-            loss (_type_, optional): _description_. Defaults to None.
-            metrics (_type_, optional): _description_. Defaults to None.
-            loss_weights (_type_, optional): _description_. Defaults to None.
+    def compile(self, **kwargs):
         """
-        if optimizer is None:
-            optimizer = self.optimizer
-        if loss is None:
-            loss = self.loss
-        # Compile the model
-        self.model.compile(optimizer=optimizer,
-                           loss=loss,
-                           metrics=metrics,
-                           loss_weights=loss_weights)
+        Configure the model for training
+        """
+        self.model.compile(**kwargs)
 
-    def summary(self):
-        """Get the summary of the model.
+    def summary(self, **kwargs):
+        """
+        Get the summary of the model.
         # TODO: Complete docstring
         The summary is textual and includes information about:
         The layers and their order in the model.
         The output shape of each layer.
         """
-        return self.model.summary()
+        return self.model.summary(**kwargs)
 
     def fit(self, x, y, batch_size=None, epochs=1):
         """_summary_
@@ -215,7 +246,6 @@ class IncrFeatStridedConvFCUpsampReflectPadAE():
         Returns:
             _type_: _description_
         """
-        self.compile()
         if isinstance(x, nib.streamlines.ArraySequence):
             x = np.array(x)
         if isinstance(y, nib.streamlines.ArraySequence):
