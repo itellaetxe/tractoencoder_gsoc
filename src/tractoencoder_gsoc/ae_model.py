@@ -6,7 +6,7 @@ import keras
 from keras import layers, Sequential, Layer, Model, initializers
 
 
-dict_kernel_size_flatten_encoder_shape = {1 : 12288,
+dict_kernel_size_flatten_encoder_shape = {1: 12288,
                                           2: 10240,
                                           3: 8192,
                                           4: 7168,
@@ -222,6 +222,7 @@ class IncrFeatStridedConvFCUpsampReflectPadAE():
         """
         Configure the model for training
         """
+        kwargs['optimizer'].weight_decay = 0.13
         self.model.compile(**kwargs)
 
     def summary(self, **kwargs):

@@ -81,7 +81,7 @@ if __name__ == "__main__":
     input_data = np.array(utils.read_data(args.input_trk, args.input_anat))
 
     # Train the model (first compile it)
-    model.compile(optimizer=tf.keras.optimizers.Adadelta(learning_rate=args.learning_rate),
+    model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=args.learning_rate),
                   loss=tf.keras.losses.MeanSquaredError())
     model.fit(x=input_data, y=input_data, epochs=args.epochs, batch_size=args.batch_size)
 
