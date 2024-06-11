@@ -100,6 +100,20 @@ class Encoder(Layer):
                                 kernel_initializer=self.dense_weights_initializer,
                                 bias_initializer=self.dense_biases_initializer)
 
+    def get_config(self):
+        base_config = super().get_config()
+        config = {
+            "latent_space_dims": keras.saving.serialize_keras_object(self.latent_space_dims),
+            "kernel_size": keras.saving.serialize_keras_object(self.kernel_size)
+        }
+        return {**base_config, **config}
+
+    @classmethod
+    def from_config(cls, config):
+        latent_space_dims = keras.saving.deserialize_keras_object(config.pop('latent_space_dims'))
+        kernel_size = keras.saving.deserialize_keras_object(config.pop('kernel_size'))
+        return cls(latent_space_dims, kernel_size, **config)
+
     def call(self, input_data):
         x = input_data
 
@@ -155,6 +169,20 @@ class Decoder(Layer):
             layers.Conv1D(3, self.kernel_size, strides=1, padding='valid',
                           name="decoder_conv6")
         )
+
+    def get_config(self):
+        base_config = super().get_config()
+        config = {
+            "encoder_out_size": keras.saving.serialize_keras_object(self.encoder_out_size),
+            "kernel_size": keras.saving.serialize_keras_object(self.kernel_size)
+        }
+        return {**base_config, **config}
+
+    @classmethod
+    def from_config(cls, config):
+        encoder_out_size = keras.saving.deserialize_keras_object(config.pop('encoder_out_size'))
+        kernel_size = keras.saving.deserialize_keras_object(config.pop('kernel_size'))
+        return cls(encoder_out_size, kernel_size, **config)
 
     def call(self, input_data):
         z = input_data
@@ -235,7 +263,7 @@ class IncrFeatStridedConvFCUpsampReflectPadAE():
         """
         return self.model.summary(**kwargs)
 
-    def fit(self, x, y, batch_size=None, epochs=1):
+    def fit(self, *args, **kwargs,):
         """_summary_
         # TODO: Complete docstring
         Args:
@@ -247,18 +275,21 @@ class IncrFeatStridedConvFCUpsampReflectPadAE():
         Returns:
             _type_: _description_
         """
-        if isinstance(x, nib.streamlines.ArraySequence):
-            x = np.array(x)
-        if isinstance(y, nib.streamlines.ArraySequence):
-            y = np.array(y)
-        return self.model.fit(x, y, batch_size=batch_size, epochs=epochs)
+        if isinstance(kwargs['x'], nib.streamlines.ArraySequence):
+            kwargs['x'] = np.array(kwargs['x'])
+        if isinstance(kwargs['y'], nib.streamlines.ArraySequence):
+            kwargs['y'] = np.array(kwargs['y'])
+        return self.model.fit(*args, **kwargs)
         # TODO (perhaps): write train loop manually?
 
-    def save_weights(self, filepath, overwrite=True):
+    def save_weights(self, *args, **kwargs):
         """_summary_
         # TODO: Complete docstring
-        Args:
-            filepath (_type_): _description_
-            overwrite (bool, optional): _description_. Defaults to True.
         """
-        self.model.save_weights(filepath, overwrite=overwrite)
+        self.model.save_weights(*args, **kwargs)
+
+    def save(self, *args, **kwargs):
+        """_summary_
+        # TODO: Complete docstring
+        """
+        self.model.save(*args, **kwargs)

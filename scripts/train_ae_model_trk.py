@@ -83,11 +83,16 @@ if __name__ == "__main__":
     # Train the model (first compile it)
     model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=args.learning_rate),
                   loss=tf.keras.losses.MeanSquaredError())
-    model.fit(x=input_data, y=input_data, epochs=args.epochs, batch_size=args.batch_size)
+    model.fit(x=input_data,
+              y=input_data,
+              epochs=args.epochs,
+              batch_size=args.batch_size,
+              callbacks=[tf.keras.callbacks.TensorBoard(log_dir=args.output_dir)])
 
     # Save the model
     model_fname = os.path.join(args.output_dir, "model.weights.h5")
     model.save_weights(model_fname)
+    model.save(os.path.join(args.output_dir, "model_final.keras"))
 
     # Run the input data through the model, convert it to a np.array
     y = model(input_data).numpy()
