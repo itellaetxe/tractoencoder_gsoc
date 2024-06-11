@@ -46,7 +46,7 @@ def prepare_tensor_from_file(tractogram_fname: str, img_fname: str) -> tf.Tensor
     # Build a tf.Tensor using the streamline data: should be an array that
     # has N rows, each row having 256 columns
 
-    strml_tensor = tf.Tensor(strml_data)
+    strml_tensor = tf.convert_to_tensor(strml_data)
 
     return strml_tensor
 

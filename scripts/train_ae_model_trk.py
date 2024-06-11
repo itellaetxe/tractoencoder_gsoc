@@ -78,7 +78,7 @@ if __name__ == "__main__":
     model = ae_model.IncrFeatStridedConvFCUpsampReflectPadAE(latent_space_dims=args.latent_space_dims,
                                                              kernel_size=args.kernel_size)
     # Read the data
-    input_data = np.array(utils.read_data(args.input_trk, args.input_anat))
+    input_data = utils.prepare_tensor_from_file(args.input_trk, args.input_anat)
 
     # Train the model (first compile it)
     model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=args.learning_rate),
