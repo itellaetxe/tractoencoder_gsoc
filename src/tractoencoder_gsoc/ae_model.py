@@ -13,6 +13,7 @@ dict_kernel_size_flatten_encoder_shape = {1: 12288,
                                           5: 5120}
 # TODO (general): Add typing suggestions to methods where needed/advised/possible
 # TODO (general): Add docstrings to all functions and mthods
+
 class ReflectionPadding1D(Layer):
     def __init__(self, padding: int = 1):
         super(ReflectionPadding1D, self).__init__()
@@ -50,7 +51,8 @@ class Encoder(Layer):
             layers.Conv1D(32, self.kernel_size, strides=2, padding='valid',
                           name="encoder_conv1",
                           kernel_initializer=self.conv1d_weights_initializer,
-                          bias_initializer=self.conv1d_biases_initializer)
+                          bias_initializer=self.conv1d_biases_initializer,
+                          padding='zeros')
         )
         self.encod_conv2 = pre_pad(
             layers.Conv1D(64, self.kernel_size, strides=2, padding='valid',
@@ -83,7 +85,7 @@ class Encoder(Layer):
                           bias_initializer=self.conv1d_biases_initializer)
         )
 
-        self.flatten = layers.Flatten(name='flatten')
+        # self.flatten = layers.Flatten(name='flatten')
 
         # For Dense layers
         # Link: https://pytorch.org/docs/stable/generated/torch.nn.Linear.html (Variables section)
@@ -127,7 +129,7 @@ class Encoder(Layer):
         self.encoder_out_size = h6.shape[1:]
 
         # Flatten
-        h7 = self.flatten(h6)
+        h7 = tf.reshape(h6, (-1, self.encoder_out_size[0] * self.encoder_out_size[1]))
         fc1 = self.fc1(h7)
 
         return fc1

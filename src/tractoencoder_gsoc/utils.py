@@ -1,11 +1,11 @@
 # Adapted from the original code from the tractolearn repository: git@github.com:scil-vital/tractolearn.git
+import sys
 
 import tensorflow as tf
 import os
 import numpy as np
 import nibabel as nib
-
-import sys
+import h5py
 
 from dipy.io.stateful_tractogram import Space
 from dipy.io.streamline import load_tractogram
@@ -70,6 +70,34 @@ def save_tractogram(streamlines: np.array,
 
     return None
 
+
+def write_model_specs(spec_file: str, model, arguments) -> None:
+    if not os.path.exists(os.path.dirname(spec_file)):
+        os.makedirs(os.path.dirname(spec_file))
+
+    with open(spec_file, "w") as f:
+        f.write(f"### Model: {model.model.name}\n\n")
+        f.write("### Training parameters:\n")
+        f.write(f"## Batch Size: {arguments.batch_size}\n")
+        f.write(f"## Epochs: {arguments.epochs}\n")
+        f.write(f"## Learning Rate: {arguments.learning_rate}\n\n")
+        f.write("### Model Parameters:\n")
+        f.write(f"## Latent Space Dimensions: {model.latent_space_dims}\n")
+        f.write(f"## Kernel Size: {model.kernel_size}\n\n")
+        f.write("### Model Architecture:\n")
+        for weight in model.model.weights:
+            f.write(f"## Layer: {weight.path}\n")
+
+    print(f"INFO: Model specs written to {spec_file}")
+
+    return None
+
+
+def load_h5_dataset(h5_fname: str, dataset_name: str = None) -> np.array:
+    with h5py.File(h5_fname, "r") as f:
+        data = f[dataset_name][()]
+
+    return data
 
 # TODO: Translate function to TF
 # def test_ae_model(tractogram_fname: str, img_fname: str, device):
