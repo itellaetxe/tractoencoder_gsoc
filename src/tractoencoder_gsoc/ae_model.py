@@ -24,6 +24,28 @@ class ReflectionPadding1D(Layer):
                       mode='REFLECT')
 
 
+class LinearUpSampling1D(Layer):
+    def __init__(self, size=2, **kwargs):
+        super(LinearUpSampling1D, self).__init__(**kwargs)
+        self.size = size
+
+    def call(self, inputs):
+        # Add an extra dimension to make the data 2D
+        inputs = tf.expand_dims(inputs, axis=2)
+        # Resize with linear interpolation
+        output = tf.image.resize(inputs, size=(tf.shape(inputs)[1] * self.size, 1), method='bilinear')
+        # Remove the extra dimension
+        return tf.squeeze(output, axis=2)
+
+    def compute_output_shape(self, input_shape):
+        return (input_shape[0], input_shape[1] * self.size, input_shape[2])
+
+    def get_config(self):
+        config = super(LinearUpSampling1D, self).get_config()
+        config.update({"size": self.size})
+        return config
+
+
 def pre_pad(layer: Layer):
     return Sequential([ReflectionPadding1D(padding=1), layer])
 
