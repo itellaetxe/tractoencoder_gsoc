@@ -10,44 +10,10 @@ from tractoencoder_gsoc import utils as utils
 from tractoencoder_gsoc import ae_model
 
 
-def process_arguments() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Train the autoencoder model")
-    parser.add_argument("--input_trk", type=str, help="Path to the input tractogram (.trk file)")
-    parser.add_argument("--input_anat", type=str, help="Path to the input anatomical image (NIfTI file)")
-    parser.add_argument("--output_dir", type=str, help="Path to the output directory where results will be saved")
-    parser.add_argument("--batch_size", type=int, default=20, help="Batch size for training the model")
-    parser.add_argument("--epochs", type=int, default=10, help="Number of epochs for training the model")
-    parser.add_argument("--latent_space_dims", type=int, default=32, help="Number of dimensions in the latent space")
-    parser.add_argument("--kernel_size", type=int, default=3, help="Size of the kernel for the convolutional layers")
-    parser.add_argument("--learning_rate", type=float, default=0.001, help="Learning rate for the optimizer")
-    parser.add_argument("--seed", type=int, default=2208, help="Seed for reproducibility")
-    args = parser.parse_args()
-
-    # Sanity check of CLI arguments
-    if not os.path.exists(args.input_trk):
-        raise FileNotFoundError(f"Input dataset not found at {args.input_trk}")
-    if not os.path.exists(args.input_anat):
-        raise FileNotFoundError(f"Input anatomical image not found at {args.input_anat}")
-
-    if os.path.exists(args.output_dir):
-        # If the output directory exists and it is NOT empty, raise Error because we do not want to overwrite
-        if len(os.listdir(args.output_dir)) != 0:
-            raise FileExistsError(f"Output directory {args.output_dir} is not empty. Please provide an empty directory")
-        else:
-            print(f"WARNING: Empty output directory found at {args.output_dir}")
-    # If the output directory does not exist, create it:
-    else:
-        os.makedirs(args.output_dir)
-
-    print(f"INFO: Your results will be stored at {args.output_dir}")
-
-    return args
-
-
 if __name__ == "__main__":
 
     # Get input arguments
-    args = process_arguments()
+    args = utils.process_arguments_trk()
 
     # Set the seed for reproducibility
     tf.random.set_seed(args.seed)
@@ -92,11 +58,11 @@ if __name__ == "__main__":
     output_screenshot_fname = os.path.join(args.output_dir, "output_view.png")
     print(f"INFO: Saving the input screenshot at {input_screenshot_fname}")
 
-    # Just in case if fury is not installed
     activate_env = "source " + os.path.join(os.path.dirname(os.path.dirname(__file__)), ".venv/bin/activate")
     current_env = os.environ.copy()
-    command = f"{activate_env} && uv pip install -U fury"
-    subprocess.run(command, env=current_env, executable="/bin/bash", shell=True)
+    # Just in case if fury is not installed
+    # command = f"{activate_env} && uv pip install -U fury && uv pip install numpy==1.26.0"
+    # subprocess.run(command, env=current_env, executable="/bin/bash", shell=True)
     command = f"{activate_env} && dipy_horizon {args.input_trk} --stealth --out_stealth_png {input_screenshot_fname}"
     subprocess.run(command, env=current_env, executable="/bin/bash", shell=True)
     command = f"{activate_env} && dipy_horizon {output_trk_fname} --stealth --out_stealth_png {output_screenshot_fname}"

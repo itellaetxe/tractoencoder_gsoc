@@ -1,5 +1,6 @@
 # Adapted from the original code from the tractolearn repository: git@github.com:scil-vital/tractolearn.git
 import sys
+import argparse
 
 import tensorflow as tf
 import os
@@ -77,6 +78,9 @@ def write_model_specs(spec_file: str, model, arguments) -> None:
 
     with open(spec_file, "w") as f:
         f.write(f"### Model: {model.model.name}\n\n")
+        f.write(f"### Input Data: {os.path.abspath(arguments.input_trk)}\n")
+        f.write(f"### Anatomical Data: {os.path.abspath(arguments.input_anat)}\n")
+        f.write(f"### Output Directory: {os.path.abspath(arguments.output_dir)}\n\n")
         f.write("### Training parameters:\n")
         f.write(f"## Batch Size: {arguments.batch_size}\n")
         f.write(f"## Epochs: {arguments.epochs}\n")
@@ -98,6 +102,75 @@ def load_h5_dataset(h5_fname: str, dataset_name: str = None) -> np.array:
         data = f[dataset_name][()]
 
     return data
+
+
+def process_arguments_hdf5() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Train the autoencoder model using HDF5 datasets.")
+    parser.add_argument("--input_dataset", type=str, help="Path to the input HDF5 file (.h5 file)")
+    parser.add_argument("--input_anat", type=str, help="Path to the input anatomical image (NIfTI file)")
+    parser.add_argument("--output_dir", type=str, help="Path to the output directory where results will be saved")
+    parser.add_argument("--batch_size", type=int, default=20, help="Batch size for training the model")
+    parser.add_argument("--epochs", type=int, default=10, help="Number of epochs for training the model")
+    parser.add_argument("--latent_space_dims", type=int, default=32, help="Number of dimensions in the latent space")
+    parser.add_argument("--kernel_size", type=int, default=3, help="Size of the kernel for the convolutional layers")
+    parser.add_argument("--learning_rate", type=float, default=0.00068, help="Learning rate for the optimizer")
+    parser.add_argument("--seed", type=int, default=2208, help="Seed for reproducibility")
+    args = parser.parse_args()
+
+    # Sanity check of CLI arguments
+    if not os.path.exists(args.input_dataset):
+        raise FileNotFoundError(f"Input dataset not found at {args.input_dataset}")
+    if not os.path.exists(args.input_anat):
+        raise FileNotFoundError(f"Input anatomical image not found at {args.input_anat}")
+
+    if os.path.exists(args.output_dir):
+        # If the output directory exists and it is NOT empty, raise Error because we do not want to overwrite
+        if len(os.listdir(args.output_dir)) != 0:
+            raise FileExistsError(f"Output directory {args.output_dir} is not empty. Please provide an empty directory")
+        else:
+            print(f"WARNING: Empty output directory found at {args.output_dir}")
+    # If the output directory does not exist, create it:
+    else:
+        os.makedirs(args.output_dir)
+
+    print(f"INFO: Your results will be stored at {args.output_dir}")
+
+    return args
+
+
+def process_arguments_trk() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Train the autoencoder model")
+    parser.add_argument("--input_trk", type=str, help="Path to the input tractogram (.trk file)")
+    parser.add_argument("--input_anat", type=str, help="Path to the input anatomical image (NIfTI file)")
+    parser.add_argument("--output_dir", type=str, help="Path to the output directory where results will be saved")
+    parser.add_argument("--batch_size", type=int, default=20, help="Batch size for training the model")
+    parser.add_argument("--epochs", type=int, default=10, help="Number of epochs for training the model")
+    parser.add_argument("--latent_space_dims", type=int, default=32, help="Number of dimensions in the latent space")
+    parser.add_argument("--kernel_size", type=int, default=3, help="Size of the kernel for the convolutional layers")
+    parser.add_argument("--learning_rate", type=float, default=0.00068, help="Learning rate for the optimizer")
+    parser.add_argument("--seed", type=int, default=2208, help="Seed for reproducibility")
+    args = parser.parse_args()
+
+    # Sanity check of CLI arguments
+    if not os.path.exists(args.input_trk):
+        raise FileNotFoundError(f"Input dataset not found at {args.input_trk}")
+    if not os.path.exists(args.input_anat):
+        raise FileNotFoundError(f"Input anatomical image not found at {args.input_anat}")
+
+    if os.path.exists(args.output_dir):
+        # If the output directory exists and it is NOT empty, raise Error because we do not want to overwrite
+        if len(os.listdir(args.output_dir)) != 0:
+            raise FileExistsError(f"Output directory {args.output_dir} is not empty. Please provide an empty directory")
+        else:
+            print(f"WARNING: Empty output directory found at {args.output_dir}")
+    # If the output directory does not exist, create it:
+    else:
+        os.makedirs(args.output_dir)
+
+    print(f"INFO: Your results will be stored at {args.output_dir}")
+
+    return args
+
 
 # TODO: Translate function to TF
 # def test_ae_model(tractogram_fname: str, img_fname: str, device):

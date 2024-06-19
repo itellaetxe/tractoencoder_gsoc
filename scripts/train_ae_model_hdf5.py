@@ -10,44 +10,10 @@ from tractoencoder_gsoc import utils as utils
 from tractoencoder_gsoc import ae_model
 
 
-def process_arguments() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Train the autoencoder model using HDF5 datasets.")
-    parser.add_argument("--input_dataset", type=str, help="Path to the input HDF5 file (.h5 file)")
-    parser.add_argument("--input_anat", type=str, help="Path to the input anatomical image (NIfTI file)")
-    parser.add_argument("--output_dir", type=str, help="Path to the output directory where results will be saved")
-    parser.add_argument("--batch_size", type=int, default=20, help="Batch size for training the model")
-    parser.add_argument("--epochs", type=int, default=10, help="Number of epochs for training the model")
-    parser.add_argument("--latent_space_dims", type=int, default=32, help="Number of dimensions in the latent space")
-    parser.add_argument("--kernel_size", type=int, default=3, help="Size of the kernel for the convolutional layers")
-    parser.add_argument("--learning_rate", type=float, default=0.00068, help="Learning rate for the optimizer")
-    parser.add_argument("--seed", type=int, default=2208, help="Seed for reproducibility")
-    args = parser.parse_args()
-
-    # Sanity check of CLI arguments
-    if not os.path.exists(args.input_dataset):
-        raise FileNotFoundError(f"Input dataset not found at {args.input_dataset}")
-    if not os.path.exists(args.input_anat):
-        raise FileNotFoundError(f"Input anatomical image not found at {args.input_anat}")
-
-    if os.path.exists(args.output_dir):
-        # If the output directory exists and it is NOT empty, raise Error because we do not want to overwrite
-        if len(os.listdir(args.output_dir)) != 0:
-            raise FileExistsError(f"Output directory {args.output_dir} is not empty. Please provide an empty directory")
-        else:
-            print(f"WARNING: Empty output directory found at {args.output_dir}")
-    # If the output directory does not exist, create it:
-    else:
-        os.makedirs(args.output_dir)
-
-    print(f"INFO: Your results will be stored at {args.output_dir}")
-
-    return args
-
-
 if __name__ == "__main__":
 
     # Get input arguments
-    args = process_arguments()
+    args = utils.process_arguments_hdf5()
 
     # Set the seed for reproducibility
     tf.random.set_seed(args.seed)
