@@ -73,8 +73,7 @@ class Encoder(Layer):
             layers.Conv1D(32, self.kernel_size, strides=2, padding='valid',
                           name="encoder_conv1",
                           kernel_initializer=self.conv1d_weights_initializer,
-                          bias_initializer=self.conv1d_biases_initializer,
-                          padding='zeros')
+                          bias_initializer=self.conv1d_biases_initializer)
         )
         self.encod_conv2 = pre_pad(
             layers.Conv1D(64, self.kernel_size, strides=2, padding='valid',
@@ -168,27 +167,27 @@ class Decoder(Layer):
             layers.Conv1D(512, self.kernel_size, strides=1, padding='valid',
                           name="decoder_conv1")
         )
-        self.upsampl1 = layers.UpSampling1D(size=2, name="upsampling1")
+        self.upsampl1 = LinearUpSampling1D(size=2, name="upsampling1")
         self.decod_conv2 = pre_pad(
             layers.Conv1D(256, self.kernel_size, strides=1, padding='valid',
                           name="decoder_conv2")
         )
-        self.upsampl2 = layers.UpSampling1D(size=2, name="upsampling2")
+        self.upsampl2 = LinearUpSampling1D(size=2, name="upsampling2")
         self.decod_conv3 = pre_pad(
             layers.Conv1D(128, self.kernel_size, strides=1, padding='valid',
                           name="decoder_conv3")
         )
-        self.upsampl3 = layers.UpSampling1D(size=2, name="upsampling3")
+        self.upsampl3 = LinearUpSampling1D(size=2, name="upsampling3")
         self.decod_conv4 = pre_pad(
             layers.Conv1D(64, self.kernel_size, strides=1, padding='valid',
                           name="decoder_conv4")
         )
-        self.upsampl4 = layers.UpSampling1D(size=2, name="upsampling4")
+        self.upsampl4 = LinearUpSampling1D(size=2, name="upsampling4")
         self.decod_conv5 = pre_pad(
             layers.Conv1D(32, self.kernel_size, strides=1, padding='valid',
                           name="decoder_conv5")
         )
-        self.upsampl5 = layers.UpSampling1D(size=2, name="upsampling5")
+        self.upsampl5 = LinearUpSampling1D(size=2, name="upsampling5")
         self.decod_conv6 = pre_pad(
             layers.Conv1D(3, self.kernel_size, strides=1, padding='valid',
                           name="decoder_conv6")
