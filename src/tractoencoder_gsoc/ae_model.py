@@ -51,8 +51,7 @@ class Encoder(Layer):
             layers.Conv1D(32, self.kernel_size, strides=2, padding='valid',
                           name="encoder_conv1",
                           kernel_initializer=self.conv1d_weights_initializer,
-                          bias_initializer=self.conv1d_biases_initializer,
-                          padding='zeros')
+                          bias_initializer=self.conv1d_biases_initializer)
         )
         self.encod_conv2 = pre_pad(
             layers.Conv1D(64, self.kernel_size, strides=2, padding='valid',
@@ -85,7 +84,7 @@ class Encoder(Layer):
                           bias_initializer=self.conv1d_biases_initializer)
         )
 
-        # self.flatten = layers.Flatten(name='flatten')
+        self.flatten = layers.Flatten(name='flatten')
 
         # For Dense layers
         # Link: https://pytorch.org/docs/stable/generated/torch.nn.Linear.html (Variables section)
@@ -129,7 +128,9 @@ class Encoder(Layer):
         self.encoder_out_size = h6.shape[1:]
 
         # Flatten
-        h7 = tf.reshape(h6, (-1, self.encoder_out_size[0] * self.encoder_out_size[1]))
+        # First transpose the tensor to match the PyTorch implementation so the flattening is equal
+        h7 = tf.transpose(h6, perm=[0, 2, 1])
+        h7 = self.flatten(h7)
         fc1 = self.fc1(h7)
 
         return fc1

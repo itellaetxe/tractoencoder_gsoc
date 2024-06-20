@@ -140,8 +140,8 @@ def process_arguments_hdf5() -> argparse.Namespace:
 
 def process_arguments_trk() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train the autoencoder model")
-    parser.add_argument("--input_trk", type=str, help="Path to the input tractogram (.trk file)")
-    parser.add_argument("--input_anat", type=str, help="Path to the input anatomical image (NIfTI file)")
+    parser.add_argument("--input_trk", nargs='+', type=str, help="Path(s) to the input tractogram(s) (.trk)")
+    parser.add_argument("--input_anat", type=str, help="Path to the input anatomical image (NIfTI)")
     parser.add_argument("--output_dir", type=str, help="Path to the output directory where results will be saved")
     parser.add_argument("--batch_size", type=int, default=20, help="Batch size for training the model")
     parser.add_argument("--epochs", type=int, default=10, help="Number of epochs for training the model")
@@ -152,8 +152,9 @@ def process_arguments_trk() -> argparse.Namespace:
     args = parser.parse_args()
 
     # Sanity check of CLI arguments
-    if not os.path.exists(args.input_trk):
-        raise FileNotFoundError(f"Input dataset not found at {args.input_trk}")
+    for trk_path in args.input_trk:
+        if not os.path.exists(trk_path):
+            raise FileNotFoundError(f"Input dataset not found at {trk_path}")
     if not os.path.exists(args.input_anat):
         raise FileNotFoundError(f"Input anatomical image not found at {args.input_anat}")
 

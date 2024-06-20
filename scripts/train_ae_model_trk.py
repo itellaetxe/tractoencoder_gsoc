@@ -21,10 +21,18 @@ if __name__ == "__main__":
     # Example of using the model
     model = ae_model.IncrFeatStridedConvFCUpsampReflectPadAE(latent_space_dims=args.latent_space_dims,
                                                              kernel_size=args.kernel_size)
-    # Read the data
-    input_data = utils.prepare_tensor_from_file(args.input_trk, args.input_anat)
 
-    # Train the model (first compile it)
+    # Read data. If multiple trk files, read all and concatenate in numpy array along 1st axis
+    if len(args.input_trk) == 1:
+        input_data = utils.prepare_tensor_from_file(args.input_trk, args.input_anat)
+    else:
+        input_data = []
+        for trk_path in args.input_trk:
+            input_data.append(utils.prepare_tensor_from_file(trk_path, args.input_anat).numpy())
+        # Concatenate along the first axis
+        input_data = tf.convert_to_tensor(np.concatenate(input_data, axis=0))
+
+    # Compile the model, then fit it (train it)
     model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=args.learning_rate),
                   loss=tf.keras.losses.MeanSquaredError())
     model.fit(x=input_data,
@@ -50,7 +58,6 @@ if __name__ == "__main__":
 
     # Write the model specs to a file for future reference
     spec_file = os.path.join(args.output_dir, "model_specs.txt")
-
     utils.write_model_specs(spec_file=spec_file, model=model, arguments=args)
 
     # Save a screenshot of the input and the output using dipy_horizon
