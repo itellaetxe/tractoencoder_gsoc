@@ -7,7 +7,7 @@ import subprocess
 import tensorflow as tf
 
 from tractoencoder_gsoc import utils as utils
-from tractoencoder_gsoc import ae_model
+from tractoencoder_gsoc.models import ae_model
 
 
 if __name__ == "__main__":
