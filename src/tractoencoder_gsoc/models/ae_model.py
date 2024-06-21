@@ -15,8 +15,8 @@ dict_kernel_size_flatten_encoder_shape = {1: 12288,
 # TODO (general): Add docstrings to all functions and mthods
 
 class ReflectionPadding1D(Layer):
-    def __init__(self, padding: int = 1):
-        super(ReflectionPadding1D, self).__init__()
+    def __init__(self, padding: int = 1, **kwargs):
+        super(ReflectionPadding1D, self).__init__(**kwargs)
         self.padding = padding
 
     def call(self, inputs):
@@ -29,8 +29,8 @@ def pre_pad(layer: Layer):
 
 
 class Encoder(Layer):
-    def __init__(self, latent_space_dims=32, kernel_size=3):
-        super(Encoder, self).__init__()
+    def __init__(self, latent_space_dims=32, kernel_size=3, **kwargs):
+        super(Encoder, self).__init__(**kwargs)
 
         # TODO: Add comments to the architecture of the model
         self.latent_space_dims = latent_space_dims
@@ -136,8 +136,8 @@ class Encoder(Layer):
         return fc1
 
 class Decoder(Layer):
-    def __init__(self, encoder_out_size, kernel_size=3):
-        super(Decoder, self).__init__()
+    def __init__(self, encoder_out_size, kernel_size=3, **kwargs):
+        super(Decoder, self).__init__(**kwargs)
         self.kernel_size = kernel_size
         self.encoder_out_size = encoder_out_size
 

@@ -38,5 +38,8 @@ dependencies = [
     "ruff == 0.4.6"
 ]
 
+# [project.scripts] = [
+#     train_ae_trk = "tractoencoder_gsoc.scripts.train_ae_trk:main",
+# ]
 readme ="README.md"
 requires-python = ">=3.10"
