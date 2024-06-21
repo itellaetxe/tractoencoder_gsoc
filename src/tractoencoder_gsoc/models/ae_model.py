@@ -4,28 +4,12 @@ import nibabel as nib
 import tensorflow as tf
 import keras
 from keras import layers, Sequential, Layer, Model, initializers
+from tractoencoder_gsoc.utils import pre_pad
+from tractoencoder_gsoc.utils import dict_kernel_size_flatten_encoder_shape
 
 
-dict_kernel_size_flatten_encoder_shape = {1: 12288,
-                                          2: 10240,
-                                          3: 8192,
-                                          4: 7168,
-                                          5: 5120}
 # TODO (general): Add typing suggestions to methods where needed/advised/possible
 # TODO (general): Add docstrings to all functions and mthods
-
-class ReflectionPadding1D(Layer):
-    def __init__(self, padding: int = 1, **kwargs):
-        super(ReflectionPadding1D, self).__init__(**kwargs)
-        self.padding = padding
-
-    def call(self, inputs):
-        return tf.pad(inputs, [[0, 0], [self.padding, self.padding], [0, 0]],
-                      mode='REFLECT')
-
-
-def pre_pad(layer: Layer):
-    return Sequential([ReflectionPadding1D(padding=1), layer])
 
 
 class Encoder(Layer):

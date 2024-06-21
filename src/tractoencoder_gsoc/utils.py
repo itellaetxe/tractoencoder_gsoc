@@ -12,6 +12,29 @@ from dipy.io.stateful_tractogram import Space
 from dipy.io.streamline import load_tractogram
 from dipy.tracking.streamline import Streamlines  # same as nibabel.streamlines.ArraySequence
 
+from keras import Layer, Sequential
+
+
+dict_kernel_size_flatten_encoder_shape = {1: 12288,
+                                          2: 10240,
+                                          3: 8192,
+                                          4: 7168,
+                                          5: 5120}
+
+
+class ReflectionPadding1D(Layer):
+    def __init__(self, padding: int = 1, **kwargs):
+        super(ReflectionPadding1D, self).__init__(**kwargs)
+        self.padding = padding
+
+    def call(self, inputs):
+        return tf.pad(inputs, [[0, 0], [self.padding, self.padding], [0, 0]],
+                      mode='REFLECT')
+
+
+def pre_pad(layer: Layer):
+    return Sequential([ReflectionPadding1D(padding=1), layer])
+
 
 def read_data(tractogram_fname: str, img_fname: str = None):
     # Load the anatomical data
