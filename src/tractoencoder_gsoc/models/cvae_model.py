@@ -92,11 +92,11 @@ class Encoder(Layer):
         self.encod_r_log_var = layers.Dense(1, name="encoder_r_log_var")
 
         self.encod_z = layers.Lambda(sampling,
-                               output_shape=(self.latent_space_dims,),
-                               name="z")
+                                     output_shape=(self.latent_space_dims,),
+                                     name="z")
         self.encod_r = layers.Lambda(sampling,
-                               output_shape=(1,),
-                               name="r")
+                                     output_shape=(1,),
+                                     name="r")
 
     def get_config(self):
         base_config = super().get_config()
@@ -105,6 +105,10 @@ class Encoder(Layer):
             "kernel_size": saving.serialize_keras_object(self.kernel_size)
         }
         return {**base_config, **config}
+
+    def from_config(self):
+        # TODO: Implement this to deserialize the model properly
+        pass
 
     def call(self, input_data: tf.Tensor, input_age: int):
         x = input_data
@@ -134,8 +138,36 @@ class Encoder(Layer):
 
         h_z = self.encod_z([h_z_mean, h_z_log_var])
         h_r = self.encod_r([h_r_mean, h_r_log_var])
-        
+
         return h_z, h_r
+
+
+class Generator(Layer):
+    def __init__(self, latent_space_dims, **kwargs):
+        super(Generator, self).__init__(**kwargs)
+
+        self.latent_space_dims = latent_space_dims
+        self.pz_mean = layers.Dense(self.latent_space_dims,
+                                    name="pz_mean",
+                                    kernel_constraint=constraints.UnitNorm())
+        self.pz_log_var = layers.Dense(1, name="pz_log_var",
+                                       kernel_constraint=constraints.MaxNorm(0))
+
+    def get_config(self):
+        base_config = super().get_config()
+        config = {
+            "latent_space_dims": saving.serialize_keras_object(self.latent_space_dims)
+        }
+        return {**base_config, **config}
+
+    def from_config(self):
+        # TODO: Implement this to deserialize the model properly
+        pass
+
+    def call(self, input_data):
+        pz_mean = self.pz_mean(input_data)
+        pz_log_var = self.pz_log_var(input_data)
+        return pz_mean, pz_log_var
 
 
 class Decoder(Layer):
@@ -200,13 +232,13 @@ def init_model(latent_space_dims=32, kernel_size=3):
 
 
 class RegressionVAE():
-    def __init__(self, latent_space_dims=32, kernel_size=3)
-    
+    def __init__(self, latent_space_dims=32, kernel_size=3):
+
         # Parameter initialization
         self.latent_space_dims = latent_space_dims
         self.kernel_size = kernel_size
         self.input = Input(shape=(256, 3), name="input_streamlines")
-        
+
         self.model = init_model(latent_space_dims=self.latent_space_dims,
                                 kernel_size=self.kernel_size)
 
@@ -230,7 +262,7 @@ class RegressionVAE():
         """
         return self.model.summary(**kwargs)
 
-    def fit(self, *args, **kwargs,):
+    def fit(self, *args, **kwargs):
         """_summary_
         # TODO: Complete docstring
         Args:
@@ -260,9 +292,6 @@ class RegressionVAE():
         # TODO: Complete docstring
         """
         self.model.save(*args, **kwargs)
-
-
-
 
 
 # reparameterization trick
@@ -322,65 +351,65 @@ def augment_by_noise(data, n, sigma):
         for i in range(0, m):
             new_data = np.zeros((1, data.shape[1], data.shape[2], data.shape[3], 1))
             new_data[0] = data[np.random.randint(0, data.shape[0])]
-            noise = np.clip(np.random.normal(0, sigma, (data.shape[1], data.shape[2], data.shape[3],1)),-3*sigma,3*sigma)
+            noise = np.clip(np.random.normal(0, sigma, (data.shape[1], data.shape[2], data.shape[3], 1)), -3 * sigma, 3 * sigma)
             new_data[0] += noise
             data = np.concatenate((data, new_data), axis=0)
         return data
-        
-        
+
+
 def augment_by_flip(data):
-    data_flip = np.flip(data,1)
+    data_flip = np.flip(data, 1)
     data = np.concatenate((data, data_flip), axis=0)
     return data
 
 
 # Main Script #######
-min_x = int(sys.argv[1])    
-min_y = int(sys.argv[2])  
-min_z = int(sys.argv[3])  
-patch_x = int(sys.argv[4])    
-patch_y = int(sys.argv[5])    
-patch_z = int(sys.argv[6])     
+min_x = int(sys.argv[1])
+min_y = int(sys.argv[2])
+min_z = int(sys.argv[3])
+patch_x = int(sys.argv[4])
+patch_y = int(sys.argv[5])
+patch_z = int(sys.argv[6])
 
-dropout_alpha = float(sys.argv[7])     
-L2_reg = float(sys.argv[8]) 
+dropout_alpha = float(sys.argv[7])
+L2_reg = float(sys.argv[8])
 
-## CNN Parameters 
-#dropout_alpha = 0.5
+# CNN Parameters
+# dropout_alpha = 0.5
 ft_bank_baseline = 16
 latent_dim = 16
 augment_size = 1000
-#L2_reg= 0.00
+# L2_reg= 0.00
 binary_image = False
 
 
-## load data
-file_idx = np.loadtxt('./access.txt')  
-age = np.loadtxt('./age.txt') 
+# load data
+file_idx = np.loadtxt('./access.txt')
+age = np.loadtxt('./age.txt')
 subject_num = file_idx.shape[0]
 
-data = np.zeros((subject_num, patch_x, patch_y, patch_z,1))
+data = np.zeros((subject_num, patch_x, patch_y, patch_z, 1))
 i = 0
 for subject_idx in file_idx:
-    subject_string = format(int(subject_idx),'04d')
-    filename_full = '/fs/neurosci01/qingyuz/lab_structural/affine_2mm/'+subject_string+'_baseline.nii.gz'
+    subject_string = format(int(subject_idx), '04d')
+    filename_full = '/fs/neurosci01/qingyuz/lab_structural/affine_2mm/' + subject_string + '_baseline.nii.gz'
 
     img = nib.load(filename_full)
     img_data = img.get_fdata()
 
-    data[i,:,:,:,0] = img_data[min_x:min_x+patch_x, min_y:min_y+patch_y, min_z:min_z+patch_z] 
-    data[i,:,:,:,0] = (data[i,:,:,:,0] - np.mean(data[i,:,:,:,0])) / np.std(data[i,:,:,:,0])
+    data[i, :, :, :, 0] = img_data[min_x: min_x + patch_x, min_y: min_y + patch_y, min_z: min_z + patch_z]
+    data[i, :, :, :, 0] = (data[i, :, :, :, 0] - np.mean(data[i, :, :, :, 0])) / np.std(data[i, :, :, :, 0])
 
     # output an example
-    array_img = nib.Nifti1Image(np.squeeze(data[i,:,:,:,0]),np.diag([1, 1, 1, 1]))  
+    array_img = nib.Nifti1Image(np.squeeze(data[i, :, :, :, 0]), np.diag([1, 1, 1, 1]))
     filename = 'processed_example.nii.gz'
-    nib.save(array_img,filename)
+    nib.save(array_img, filename)
 
     i += 1
 
 
-## Cross Validation 
-print("Data size \n",data.shape)
+# Cross Validation
+print("Data size \n", data.shape)
 
 skf = StratifiedKFold(n_splits=5, shuffle=True)
 fake = np.zeros((data.shape[0]))
@@ -396,29 +425,29 @@ for train_idx, test_idx in skf.split(data, fake):
 
     # build encoder model
     input_r = Input(shape=(1, ), name='ground_truth')
-    input_image = Input(shape=(patch_x,patch_y,patch_z,1), name='input_image')
-    feature = layers.Conv3D(ft_bank_baseline, activation='relu', kernel_size=(3, 3, 3),padding='same')(input_image)
+    input_image = Input(shape=(patch_x, patch_y, patch_z, 1), name='input_image')
+    feature = layers.Conv3D(ft_bank_baseline, activation='relu', kernel_size=(3, 3, 3), padding='same')(input_image)
     feature = layers.MaxPooling3D(pool_size=(2, 2, 2))(feature)
 
-    feature = layers.Conv3D(ft_bank_baseline*2, activation='relu', kernel_size=(3, 3, 3),padding='same')(feature)
+    feature = layers.Conv3D(ft_bank_baseline * 2, activation='relu', kernel_size=(3, 3, 3), padding='same')(feature)
     feature = layers.MaxPooling3D(pool_size=(2, 2, 2))(feature)
 
-    feature = layers.Conv3D(ft_bank_baseline*4, activation='relu', kernel_size=(3, 3, 3),padding='same')(feature)
+    feature = layers.Conv3D(ft_bank_baseline * 4, activation='relu', kernel_size=(3, 3, 3), padding='same')(feature)
     feature = layers.MaxPooling3D(pool_size=(2, 2, 2))(feature)
 
     feature = layers.Flatten()(feature)
     feature = layers.Dropout(dropout_alpha)(feature)
-    feature_dense = layers.Dense(latent_dim*4, activation='tanh',kernel_regularizer=regularizers.l2(L2_reg))(feature)
+    feature_dense = layers.Dense(latent_dim * 4, activation='tanh', kernel_regularizer=regularizers.l2(L2_reg))(feature)
 
-    feature_z_mean = layers.Dense(latent_dim*2, activation='tanh')(feature_dense)
+    feature_z_mean = layers.Dense(latent_dim * 2, activation='tanh')(feature_dense)
     z_mean = layers.Dense(latent_dim, name='z_mean')(feature_z_mean)
-    feature_z_log_var = layers.Dense(latent_dim*2, activation='tanh')(feature_dense)
+    feature_z_log_var = layers.Dense(latent_dim * 2, activation='tanh')(feature_dense)
     z_log_var = layers.Dense(latent_dim, name='z_log_var')(feature_z_log_var)
 
-    feature_r_mean = layers.Dense(latent_dim*2, activation='tanh')(feature_dense)
+    feature_r_mean = layers.Dense(latent_dim * 2, activation='tanh')(feature_dense)
     r_mean = layers.Dense(1, name='r_mean')(feature_r_mean)
-    feature_r_log_var = layers.Dense(latent_dim*2, activation='tanh')(feature_dense)
-    r_log_var = layers.Dense(1, name='r_log_var')(feature_r_log_var)   
+    feature_r_log_var = layers.Dense(latent_dim * 2, activation='tanh')(feature_dense)
+    r_log_var = layers.Dense(1, name='r_log_var')(feature_r_log_var)
 
     # use reparameterization trick to push the sampling out as input
     z_mondongo = layers.Lambda(sampling, output_shape=(latent_dim,), name='z')([z_mean, z_log_var])
