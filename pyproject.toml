@@ -32,6 +32,7 @@ dependencies = [
     "fury == 0.8.0",
     "nibabel == 5.2.1",
     "tensorflow == 2.16.1",
+    "scikit-learn == 1.5.0",
     "torch == 2.3.1",
     "ipykernel == 6.29.4",
     "pre-commit == 3.7.1",
