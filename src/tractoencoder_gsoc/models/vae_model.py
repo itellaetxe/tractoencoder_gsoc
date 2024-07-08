@@ -14,10 +14,14 @@ from tractoencoder_gsoc.utils import dict_kernel_size_flatten_encoder_shape
 
 class ReparametrizationTrickSampling(layers.Layer):
     """Uses (z_mean, z_log_var) to sample z, the vector encoding a digit."""
-    def call(self, inputs: tuple):
+    def __init__(self, **kwargs):
+        super(ReparametrizationTrickSampling, self).__init__(**kwargs)
+
+    def call(self, inputs: tuple[list] = ([0], [1.0])):
         z_mean, z_log_var = inputs
-        batch = tf.shape(z_mean)[0]
-        dim = tf.shape(z_mean)[1]
+        batch = np.shape(z_mean)[0]
+        dim = np.shape(z_mean)[1]
+
         # Reparametrization trick
         epsilon = tf.keras.backend.random_normal(shape=(batch, dim))
         return z_mean + tf.exp(0.5 * z_log_var) * epsilon
@@ -138,9 +142,13 @@ class Encoder(Layer):
         return z_mean, z_log_var
 
 class Decoder(Layer):
-    def __init__(self, encoder_out_size, kernel_size=3, **kwargs):
+    def __init__(self, encoder_out_size,
+                 kernel_size=3,
+                 latent_space_dims=32,
+                 **kwargs):
         super(Decoder, self).__init__(**kwargs)
         self.kernel_size = kernel_size
+        self.latent_space_dims = latent_space_dims
         self.encoder_out_size = encoder_out_size
 
         self.fc2 = layers.Dense(8192, name="fc2")
@@ -190,6 +198,8 @@ class Decoder(Layer):
         return cls(encoder_out_size, kernel_size, **config)
 
     def call(self, input_data):
+        # z: latent vector sampled from z_mean and z_log_var using the
+        # reparametrization trick
         z = input_data
         fc = self.fc2(z)
 
@@ -218,6 +228,7 @@ def init_model(latent_space_dims=32, kernel_size=3):
     # encode
     encoder = Encoder(latent_space_dims=latent_space_dims,
                       kernel_size=kernel_size)
+    # this is the latent vector sampled with the reparametrization trick
     encoded = encoder(input_data)
 
     # decode
@@ -228,13 +239,13 @@ def init_model(latent_space_dims=32, kernel_size=3):
 
     # Instantiate model and name it
     model = Model(input_data, output_data)
-    model.name = 'IncrFeatStridedConvFCUpsampReflectPadAE'
+    model.name = 'IncrFeatStridedConvFCUpsampReflectPadVAE'
     return model
 
 
 class IncrFeatStridedConvFCUpsampReflectPadVAE():
     # TODO: Complete docstring
-    """Strided convolution-upsampling-based AE using reflection-padding and
+    """Strided convolution-upsampling-based VAE using reflection-padding and
     increasing feature maps in decoder.
     """
 
@@ -247,10 +258,16 @@ class IncrFeatStridedConvFCUpsampReflectPadVAE():
 
         self.encoder = Encoder(latent_space_dims=self.latent_space_dims,
                                kernel_size=self.kernel_size)
-        self.decoder = Decoder(encoder_out_size=self.encoder.encoder_out_size,
+        encoded = self.encoder(self.input)
+        z_mean_mock = np.random.normal(size=(10, self.latent_space_dims)).astype(np.float32)
+        z_log_var_mock = np.random.normal(size=(10, self.latent_space_dims)).astype(np.float32)
+
+        self.sampling = ReparametrizationTrickSampling()
+        z = self.sampling(inputs=([z_mean_mock, z_log_var_mock]))  # Dummy input for sampling mean=0 and log_var=1
+        self.decoder = Decoder(encoder_out_size=z.shape,
                                latent_space_dims=self.latent_space_dims,
                                kernel_size=self.kernel_size)
-        self.sampling = ReparametrizationTrickSampling()
+        decoded = self.decoder(z)
 
     def __call__(self, x):
         z_mean, z_log_var = self.encoder(x)
