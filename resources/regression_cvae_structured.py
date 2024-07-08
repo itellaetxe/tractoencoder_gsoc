@@ -66,7 +66,7 @@ class Encoder(Layer):
         self.encod_dense1 = layers.Dense(4 * self.latent_space_dims,
                                          name="encoder_dense1",
                                          activation="tanh",
-                                         kernel_regularizer=regularizers.l2(0.01))
+                                         kernel_regularizer=regularizers.l2(l2=0.01))
 
         self.encod_z_mean_feature = layers.Dense(2 * self.latent_space_dims,
                                                  name="encoder_z_mean_feature",
@@ -177,19 +177,19 @@ class Decoder(Layer):
         self.encoder_out_size = latent_space_dims
         self.kernel_size = kernel_size
 
-        self.decod_dense1 = layers.Dense(2 * self.latent_space_dims,
+        self.decod_dense1 = layers.Dense(2 * self.encoder_out_size,
                                          name="decoder_dense1",
                                          activation="tanh",
-                                         kernel_regularizer=regularizers.l2(0.01))
-        self.decod_dense2 = layers.Dense(4 * self.latent_space_dims,
+                                         kernel_regularizer=regularizers.l2(l2=0.01))
+        self.decod_dense2 = layers.Dense(4 * self.encoder_out_size,
                                          name="decoder_dense2",
                                          activation="tanh",
-                                         kernel_regularizer=regularizers.l2(0.01))
-        self.decod_dense3 = layers.Dense((256 / 8) * 16 * 4,
+                                         kernel_regularizer=regularizers.l2(l2=0.01))
+        self.decod_dense3 = layers.Dense(int((256 / 8) * 16 * 4),
                                          name="decoder_dense3",
                                          activation="relu",
-                                         kernel_regularizer=regularizers.l2(0.01))
-        self.decod_reshape = layers.Reshape((256 / 8) * 16 * 4,
+                                         kernel_regularizer=regularizers.l2(l2=0.01))
+        self.decod_reshape = layers.Reshape((int((256 / 8) * 16 * 4), 1),
                                             name="decoder_reshape")
 
         self.decod_conv1 = layers.Conv1D(64, kernel_size=self.kernel_size,
@@ -363,212 +363,212 @@ def augment_by_flip(data):
     return data
 
 
-# Main Script #######
-min_x = int(sys.argv[1])
-min_y = int(sys.argv[2])
-min_z = int(sys.argv[3])
-patch_x = int(sys.argv[4])
-patch_y = int(sys.argv[5])
-patch_z = int(sys.argv[6])
+if __name__ == "__main__":
+    # Main Script #######
+    # min_x = int(sys.argv[1])
+    # min_y = int(sys.argv[2])
+    # min_z = int(sys.argv[3])
+    # patch_x = int(sys.argv[4])
+    # patch_y = int(sys.argv[5])
+    # patch_z = int(sys.argv[6])
 
-dropout_alpha = float(sys.argv[7])
-L2_reg = float(sys.argv[8])
+    # dropout_alpha = float(sys.argv[7])
+    # L2_reg = float(sys.argv[8])
 
-# CNN Parameters
-# dropout_alpha = 0.5
-ft_bank_baseline = 16
-latent_dim = 16
-augment_size = 1000
-# L2_reg= 0.00
-binary_image = False
-
-
-# load data
-file_idx = np.loadtxt('./access.txt')
-age = np.loadtxt('./age.txt')
-subject_num = file_idx.shape[0]
-
-data = np.zeros((subject_num, patch_x, patch_y, patch_z, 1))
-i = 0
-for subject_idx in file_idx:
-    subject_string = format(int(subject_idx), '04d')
-    filename_full = '/fs/neurosci01/qingyuz/lab_structural/affine_2mm/' + subject_string + '_baseline.nii.gz'
-
-    img = nib.load(filename_full)
-    img_data = img.get_fdata()
-
-    data[i, :, :, :, 0] = img_data[min_x: min_x + patch_x, min_y: min_y + patch_y, min_z: min_z + patch_z]
-    data[i, :, :, :, 0] = (data[i, :, :, :, 0] - np.mean(data[i, :, :, :, 0])) / np.std(data[i, :, :, :, 0])
-
-    # output an example
-    array_img = nib.Nifti1Image(np.squeeze(data[i, :, :, :, 0]), np.diag([1, 1, 1, 1]))
-    filename = 'processed_example.nii.gz'
-    nib.save(array_img, filename)
-
-    i += 1
+    # CNN Parameters
+    # dropout_alpha = 0.5
+    ft_bank_baseline = 16
+    latent_dim = 16
+    augment_size = 1000
+    # L2_reg= 0.00
+    binary_image = False
 
 
-# Cross Validation
-print("Data size \n", data.shape)
+    # load data
+    file_idx = np.loadtxt('./access.txt')
+    age = np.loadtxt('./age.txt')
+    subject_num = file_idx.shape[0]
 
-skf = StratifiedKFold(n_splits=5, shuffle=True)
-fake = np.zeros((data.shape[0]))
-pred = np.zeros((age.shape))
+    data = np.zeros((subject_num, patch_x, patch_y, patch_z, 1))
+    i = 0
+    for subject_idx in file_idx:
+        subject_string = format(int(subject_idx), '04d')
+        filename_full = '/fs/neurosci01/qingyuz/lab_structural/affine_2mm/' + subject_string + '_baseline.nii.gz'
 
-for train_idx, test_idx in skf.split(data, fake):
+        img = nib.load(filename_full)
+        img_data = img.get_fdata()
 
-    train_data = data[train_idx]
-    train_age = age[train_idx]
+        data[i, :, :, :, 0] = img_data[min_x: min_x + patch_x, min_y: min_y + patch_y, min_z: min_z + patch_z]
+        data[i, :, :, :, 0] = (data[i, :, :, :, 0] - np.mean(data[i, :, :, :, 0])) / np.std(data[i, :, :, :, 0])
 
-    test_data = data[test_idx]
-    test_age = age[test_idx]
+        # output an example
+        array_img = nib.Nifti1Image(np.squeeze(data[i, :, :, :, 0]), np.diag([1, 1, 1, 1]))
+        filename = 'processed_example.nii.gz'
+        nib.save(array_img, filename)
 
-    # build encoder model
-    input_r = Input(shape=(1, ), name='ground_truth')
-    input_image = Input(shape=(patch_x, patch_y, patch_z, 1), name='input_image')
-    feature = layers.Conv3D(ft_bank_baseline, activation='relu', kernel_size=(3, 3, 3), padding='same')(input_image)
-    feature = layers.MaxPooling3D(pool_size=(2, 2, 2))(feature)
-
-    feature = layers.Conv3D(ft_bank_baseline * 2, activation='relu', kernel_size=(3, 3, 3), padding='same')(feature)
-    feature = layers.MaxPooling3D(pool_size=(2, 2, 2))(feature)
-
-    feature = layers.Conv3D(ft_bank_baseline * 4, activation='relu', kernel_size=(3, 3, 3), padding='same')(feature)
-    feature = layers.MaxPooling3D(pool_size=(2, 2, 2))(feature)
-
-    feature = layers.Flatten()(feature)
-    feature = layers.Dropout(dropout_alpha)(feature)
-    feature_dense = layers.Dense(latent_dim * 4, activation='tanh', kernel_regularizer=regularizers.l2(L2_reg))(feature)
-
-    feature_z_mean = layers.Dense(latent_dim * 2, activation='tanh')(feature_dense)
-    z_mean = layers.Dense(latent_dim, name='z_mean')(feature_z_mean)
-    feature_z_log_var = layers.Dense(latent_dim * 2, activation='tanh')(feature_dense)
-    z_log_var = layers.Dense(latent_dim, name='z_log_var')(feature_z_log_var)
-
-    feature_r_mean = layers.Dense(latent_dim * 2, activation='tanh')(feature_dense)
-    r_mean = layers.Dense(1, name='r_mean')(feature_r_mean)
-    feature_r_log_var = layers.Dense(latent_dim * 2, activation='tanh')(feature_dense)
-    r_log_var = layers.Dense(1, name='r_log_var')(feature_r_log_var)
-
-    # use reparameterization trick to push the sampling out as input
-    z_mondongo = layers.Lambda(sampling, output_shape=(latent_dim,), name='z')([z_mean, z_log_var])
-    r = layers.Lambda(sampling, output_shape=(1,), name='r')([r_mean, r_log_var])
-
-    # instantiate encoder model
-    encoder = Model([input_image,input_r], [z_mean, z_log_var, z_mondongo, r_mean, r_log_var, r], name='encoder')
-    encoder.summary()
-
-    # build generator model
-    generator_input = Input(shape=(1,), name='genrator_input')
-    # inter_z_1 = layers.Dense(int(latent_dim/4), activation='tanh', kernel_constraint=constraints.UnitNorm(), name='inter_z_1')(generator_input)
-    # inter_z_2 = layers.Dense(int(latent_dim/2), activation='tanh', kernel_constraint=constraints.UnitNorm(), name='inter_z_2')(inter_z_1)
-    # pz_mean = layers.Dense(latent_dim, name='pz_mean')(inter_z_2)
-    pz_mean = layers.Dense(latent_dim, name='pz_mean', kernel_constraint=constraints.UnitNorm())(generator_input)
-    pz_log_var = layers.Dense(1, name='pz_log_var',kernel_constraint=constraints.MaxNorm(0))(generator_input)
+        i += 1
 
 
-    # instantiate generator model
-    generator = Model(generator_input, [pz_mean,pz_log_var], name='generator')
-    generator.summary()    
+    # Cross Validation
+    print("Data size \n", data.shape)
 
-    # build decoder model
-    latent_input = Input(shape=(latent_dim,), name='z_sampling')
-    decoded = layers.Dense(latent_dim*2, activation='tanh',kernel_regularizer=regularizers.l2(L2_reg))(latent_input)
-    decoded = layers.Dense(latent_dim*4, activation='tanh',kernel_regularizer=regularizers.l2(L2_reg))(decoded)
-    decoded = layers.Dense(int(patch_x/8*patch_y/8*patch_z/8*ft_bank_baseline*4), activation='relu',kernel_regularizer=regularizers.l2(L2_reg))(decoded)
-    decoded = layers.Reshape((int(patch_x/8),int(patch_y/8),int(patch_z/8),ft_bank_baseline*4))(decoded)
+    skf = StratifiedKFold(n_splits=5, shuffle=True)
+    fake = np.zeros((data.shape[0]))
+    pred = np.zeros((age.shape))
+
+    for train_idx, test_idx in skf.split(data, fake):
+
+        train_data = data[train_idx]
+        train_age = age[train_idx]
+
+        test_data = data[test_idx]
+        test_age = age[test_idx]
+
+        # build encoder model
+        input_r = Input(shape=(1, ), name='ground_truth')
+        input_image = Input(shape=(patch_x, patch_y, patch_z, 1), name='input_image')
+        feature = layers.Conv3D(ft_bank_baseline, activation='relu', kernel_size=(3, 3, 3), padding='same')(input_image)
+        feature = layers.MaxPooling3D(pool_size=(2, 2, 2))(feature)
+
+        feature = layers.Conv3D(ft_bank_baseline * 2, activation='relu', kernel_size=(3, 3, 3), padding='same')(feature)
+        feature = layers.MaxPooling3D(pool_size=(2, 2, 2))(feature)
+
+        feature = layers.Conv3D(ft_bank_baseline * 4, activation='relu', kernel_size=(3, 3, 3), padding='same')(feature)
+        feature = layers.MaxPooling3D(pool_size=(2, 2, 2))(feature)
+
+        feature = layers.Flatten()(feature)
+        feature = layers.Dropout(dropout_alpha)(feature)
+        feature_dense = layers.Dense(latent_dim * 4, activation='tanh', kernel_regularizer=regularizers.l2(l2=L2_reg))(feature)
+
+        feature_z_mean = layers.Dense(latent_dim * 2, activation='tanh')(feature_dense)
+        z_mean = layers.Dense(latent_dim, name='z_mean')(feature_z_mean)
+        feature_z_log_var = layers.Dense(latent_dim * 2, activation='tanh')(feature_dense)
+        z_log_var = layers.Dense(latent_dim, name='z_log_var')(feature_z_log_var)
+
+        feature_r_mean = layers.Dense(latent_dim * 2, activation='tanh')(feature_dense)
+        r_mean = layers.Dense(1, name='r_mean')(feature_r_mean)
+        feature_r_log_var = layers.Dense(latent_dim * 2, activation='tanh')(feature_dense)
+        r_log_var = layers.Dense(1, name='r_log_var')(feature_r_log_var)
+
+        # use reparameterization trick to push the sampling out as input
+        z_mondongo = layers.Lambda(sampling, output_shape=(latent_dim,), name='z')([z_mean, z_log_var])
+        r = layers.Lambda(sampling, output_shape=(1,), name='r')([r_mean, r_log_var])
+
+        # instantiate encoder model
+        encoder = Model([input_image,input_r], [z_mean, z_log_var, z_mondongo, r_mean, r_log_var, r], name='encoder')
+        encoder.summary()
+
+        # build generator model
+        generator_input = Input(shape=(1,), name='genrator_input')
+        # inter_z_1 = layers.Dense(int(latent_dim/4), activation='tanh', kernel_constraint=constraints.UnitNorm(), name='inter_z_1')(generator_input)
+        # inter_z_2 = layers.Dense(int(latent_dim/2), activation='tanh', kernel_constraint=constraints.UnitNorm(), name='inter_z_2')(inter_z_1)
+        # pz_mean = layers.Dense(latent_dim, name='pz_mean')(inter_z_2)
+        pz_mean = layers.Dense(latent_dim, name='pz_mean', kernel_constraint=constraints.UnitNorm())(generator_input)
+        pz_log_var = layers.Dense(1, name='pz_log_var',kernel_constraint=constraints.MaxNorm(0))(generator_input)
+
+
+        # instantiate generator model
+        generator = Model(generator_input, [pz_mean,pz_log_var], name='generator')
+        generator.summary()    
+
+        # build decoder model
+        latent_input = Input(shape=(latent_dim,), name='z_sampling')
+        decoded = layers.Dense(latent_dim*2, activation='tanh',kernel_regularizer=regularizers.l2(l2=L2_reg))(latent_input)
+        decoded = layers.Dense(latent_dim*4, activation='tanh',kernel_regularizer=regularizers.l2(l2=L2_reg))(decoded)
+        decoded = layers.Dense(int(patch_x/8*patch_y/8*patch_z/8*ft_bank_baseline*4), activation='relu',kernel_regularizer=regularizers.l2(l2=L2_reg))(decoded)
+        decoded = layers.Reshape((int(patch_x/8),int(patch_y/8),int(patch_z/8),ft_bank_baseline*4))(decoded)
+        
+        decoded = layers.Conv3D(ft_bank_baseline*4, kernel_size=(3, 3, 3),padding='same')(decoded)
+        decoded = layers.Activation('relu')(decoded)
+        decoded = layers.UpSampling3D((2,2,2))(decoded)
+
+        decoded = layers.Conv3D(ft_bank_baseline*2, kernel_size=(3, 3, 3),padding='same')(decoded)
+        decoded = layers.Activation('relu')(decoded)
+        decoded = layers.UpSampling3D((2,2,2))(decoded)
+
+        decoded = layers.Conv3D(ft_bank_baseline, kernel_size=(3, 3, 3),padding='same')(decoded)
+        decoded = layers.Activation('relu')(decoded)
+        decoded = layers.UpSampling3D((2,2,2))(decoded)
+
+        decoded = layers.Conv3D(1, kernel_size=(3, 3, 3),padding='same')(decoded)    
+        if binary_image:
+            outputs = layers.Activation('sigmoid')(decoded)
+        else:
+            outputs = decoded
+
+        # instantiate decoder model
+        decoder = Model(latent_input, outputs, name='decoder')
+        decoder.summary()
+        
+        # instantiate VAE model
+        pz_mean,pz_log_var = generator(encoder([input_image,input_r])[5])
+        outputs = decoder(encoder([input_image,input_r])[2])
+        vae = Model([input_image,input_r], [outputs, pz_mean,pz_log_var], name='vae_mlp')
+
+        
+        if binary_image:
+            reconstruction_loss = K.mean(losses.BinaryCrossentropy(input_image,outputs), axis=[1,2,3])
+        else:
+            reconstruction_loss = K.mean(losses.MeanAbsoluteError(input_image,outputs), axis=[1,2,3])
+
+        kl_loss = 1 + z_log_var - pz_log_var - K.tf.divide(K.square(z_mean-pz_mean),K.exp(pz_log_var)) - K.tf.divide(K.exp(z_log_var),K.exp(pz_log_var))
+        kl_loss = -0.5*K.sum(kl_loss, axis=-1)
+        label_loss = K.tf.divide(0.5*K.square(r_mean - input_r), K.exp(r_log_var)) +  0.5 * r_log_var
+
+        vae_loss = K.mean(reconstruction_loss+kl_loss+label_loss)
+
+        vae.add_loss(vae_loss)
+        vae.compile(optimizer='adam')
+        vae.summary()
     
-    decoded = layers.Conv3D(ft_bank_baseline*4, kernel_size=(3, 3, 3),padding='same')(decoded)
-    decoded = layers.Activation('relu')(decoded)
-    decoded = layers.UpSampling3D((2,2,2))(decoded)
+        #break
+        # augment data
+        train_data_aug,train_age_aug = augment_by_transformation(train_data,train_age,augment_size)
+        print("Train data shape: ",train_data_aug.shape)
 
-    decoded = layers.Conv3D(ft_bank_baseline*2, kernel_size=(3, 3, 3),padding='same')(decoded)
-    decoded = layers.Activation('relu')(decoded)
-    decoded = layers.UpSampling3D((2,2,2))(decoded)
+        # training
+        vae.fit([train_data_aug,train_age_aug],
+                verbose=2,
+                batch_size=64,
+                epochs = 80)
 
-    decoded = layers.Conv3D(ft_bank_baseline, kernel_size=(3, 3, 3),padding='same')(decoded)
-    decoded = layers.Activation('relu')(decoded)
-    decoded = layers.UpSampling3D((2,2,2))(decoded)
+        vae.save_weights('vae_weights.h5')
+        encoder.save_weights('encoder_weights.h5')
+        generator.save_weights('generator_weights.h5')
+        decoder.save_weights('decoder_weights.h5')
 
-    decoded = layers.Conv3D(1, kernel_size=(3, 3, 3),padding='same')(decoded)    
-    if binary_image:
-    	outputs = layers.Activation('sigmoid')(decoded)
-    else:
-        outputs = decoded
+        # testing
+        [z_mean, z_log_var, z_mondongo, r_mean, r_log_var, r_vae] = encoder.predict([test_data,test_age],batch_size=64)
+        pred[test_idx] = r_mean[:,0]
 
-    # instantiate decoder model
-    decoder = Model(latent_input, outputs, name='decoder')
-    decoder.summary()
-    
-    # instantiate VAE model
-    pz_mean,pz_log_var = generator(encoder([input_image,input_r])[5])
-    outputs = decoder(encoder([input_image,input_r])[2])
-    vae = Model([input_image,input_r], [outputs, pz_mean,pz_log_var], name='vae_mlp')
+        filename = 'prediction_'+str(dropout_alpha)+'_'+str(L2_reg)+'.npy'
+        np.save(filename,pred)
 
-    
-    if binary_image:
-        reconstruction_loss = K.mean(losses.BinaryCrossentropy(input_image,outputs), axis=[1,2,3])
-    else:
-        reconstruction_loss = K.mean(losses.MeanAbsoluteError(input_image,outputs), axis=[1,2,3])
+    ## CC accuracy
+    print("MSE: ",mean_squared_error(age,pred))
+    print("R2: ",r2_score(age, pred))
 
-    kl_loss = 1 + z_log_var - pz_log_var - K.tf.divide(K.square(z_mean-pz_mean),K.exp(pz_log_var)) - K.tf.divide(K.exp(z_log_var),K.exp(pz_log_var))
-    kl_loss = -0.5*K.sum(kl_loss, axis=-1)
-    label_loss = K.tf.divide(0.5*K.square(r_mean - input_r), K.exp(r_log_var)) +  0.5 * r_log_var
 
-    vae_loss = K.mean(reconstruction_loss+kl_loss+label_loss)
-
-    vae.add_loss(vae_loss)
-    vae.compile(optimizer='adam')
-    vae.summary()
-   
-    #break
-    # augment data
-    train_data_aug,train_age_aug = augment_by_transformation(train_data,train_age,augment_size)
-    print("Train data shape: ",train_data_aug.shape)
-
-    # training
-    vae.fit([train_data_aug,train_age_aug],
+    ## Training on all data to learn a mega generative model
+    train_data_aug,train_age_aug = augment_by_transformation(data,age,augment_size)
+    vae.fit([data,age],
             verbose=2,
             batch_size=64,
             epochs = 80)
 
-    vae.save_weights('vae_weights.h5')
-    encoder.save_weights('encoder_weights.h5')
-    generator.save_weights('generator_weights.h5')
-    decoder.save_weights('decoder_weights.h5')
+    ## Sample from latent space for visualizing the aging brain
+    #generator.load_weights('generator_weights.h5')
+    #decoder.load_weights('decoder_weights.h5')
+    # this range depends on the resulting encoded latent space
+    r = [-2, -1.5, -1, -0.5, 0, 1, 1.5, 2.5, 3.5, 4.5]
 
-    # testing
-    [z_mean, z_log_var, z_mondongo, r_mean, r_log_var, r_vae] = encoder.predict([test_data,test_age],batch_size=64)
-    pred[test_idx] = r_mean[:,0]
+    pz_mean = generator.predict(r,batch_size=64)
+    outputs = decoder.predict(pz_mean,batch_size=64)
 
-    filename = 'prediction_'+str(dropout_alpha)+'_'+str(L2_reg)+'.npy'
-    np.save(filename,pred)
+    for i in range(0,10):   
+        array_img = nib.Nifti1Image(np.squeeze(outputs[i,:,:,:,0]),np.diag([1, 1, 1, 1]))
+        
+        filename = 'generated'+str(i)+'.nii.gz'
+        nib.save(array_img,filename)
 
-## CC accuracy
-print("MSE: ",mean_squared_error(age,pred))
-print("R2: ",r2_score(age, pred))
-
-exit()
-
-## Training on all data to learn a mega generative model
-train_data_aug,train_age_aug = augment_by_transformation(data,age,augment_size)
-vae.fit([data,age],
-        verbose=2,
-        batch_size=64,
-        epochs = 80)
-
-## Sample from latent space for visualizing the aging brain
-#generator.load_weights('generator_weights.h5')
-#decoder.load_weights('decoder_weights.h5')
-# this range depends on the resulting encoded latent space
-r = [-2, -1.5, -1, -0.5, 0, 1, 1.5, 2.5, 3.5, 4.5]
-
-pz_mean = generator.predict(r,batch_size=64)
-outputs = decoder.predict(pz_mean,batch_size=64)
-
-for i in range(0,10):   
-    array_img = nib.Nifti1Image(np.squeeze(outputs[i,:,:,:,0]),np.diag([1, 1, 1, 1]))
-    
-    filename = 'generated'+str(i)+'.nii.gz'
-    nib.save(array_img,filename)
-
-exit()
+    exit()
