@@ -1,12 +1,16 @@
+import os
 from math import sqrt
+
 import numpy as np
 import nibabel as nib
 import tensorflow as tf
 import keras
-from keras import layers, Sequential, Layer, Model, initializers
+from keras import layers, Sequential, Layer, Model, initializers, ops
+
 from tractoencoder_gsoc.utils import pre_pad
 from tractoencoder_gsoc.utils import dict_kernel_size_flatten_encoder_shape
 
+os.environ['KERAS_BACKEND'] = 'tensorflow'
 
 # TODO (general): Add typing suggestions to methods where needed/advised/possible
 # TODO (general): Add docstrings to all functions and mthods
@@ -16,15 +20,17 @@ class ReparametrizationTrickSampling(layers.Layer):
     """Uses (z_mean, z_log_var) to sample z, the vector encoding a digit."""
     def __init__(self, **kwargs):
         super(ReparametrizationTrickSampling, self).__init__(**kwargs)
+        self.seed_generator = keras.random.SeedGenerator(2208)
 
     def call(self, inputs: tuple[list] = ([0], [1.0])):
         z_mean, z_log_var = inputs
-        batch = np.shape(z_mean)[0]
-        dim = np.shape(z_mean)[1]
+        batch = ops.shape(z_mean)[0]
+        dim = ops.shape(z_mean)[1]
 
         # Reparametrization trick
-        epsilon = tf.keras.backend.random_normal(shape=(batch, dim))
-        return z_mean + tf.exp(0.5 * z_log_var) * epsilon
+        epsilon = keras.random.normal(shape=(batch, dim),
+                                      seed=self.seed_generator)
+        return z_mean + ops.exp(0.5 * z_log_var) * epsilon
 
 
 class Encoder(Layer):
@@ -104,6 +110,9 @@ class Encoder(Layer):
                                       kernel_initializer=self.dense_weights_initializer,
                                       bias_initializer=self.dense_biases_initializer)
 
+        # Sampling Layer
+        self.sampling = ReparametrizationTrickSampling()
+
     def get_config(self):
         base_config = super().get_config()
         config = {
@@ -140,6 +149,7 @@ class Encoder(Layer):
         z_log_var = self.z_log_var(h7)
 
         return z_mean, z_log_var
+
 
 class Decoder(Layer):
     def __init__(self, encoder_out_size,
@@ -229,21 +239,29 @@ def init_model(latent_space_dims=32, kernel_size=3):
     encoder = Encoder(latent_space_dims=latent_space_dims,
                       kernel_size=kernel_size)
     # this is the latent vector sampled with the reparametrization trick
-    encoded = encoder(input_data)
+    z_mean, z_log_var = encoder(input_data)
+
+    # sampling
+    sampling = ReparametrizationTrickSampling()
+    z = sampling([z_mean, z_log_var])
+
+    # Instantiate encoder model
+    model_encoder = Model(input_data, z)
 
     # decode
+    latent_input = keras.Input(shape=(latent_space_dims,), name='z_sampling')
     decoder = Decoder(encoder.encoder_out_size,
                       kernel_size=kernel_size)
-    decoded = decoder(encoded)
+    decoded = decoder(latent_input)
     output_data = decoded
 
     # Instantiate model and name it
-    model = Model(input_data, output_data)
-    model.name = 'IncrFeatStridedConvFCUpsampReflectPadVAE'
-    return model
+    model_decoder = Model(latent_input, output_data)
+
+    return model_encoder, model_decoder
 
 
-class IncrFeatStridedConvFCUpsampReflectPadVAE():
+class IncrFeatStridedConvFCUpsampReflectPadVAE(keras.Model):
     # TODO: Complete docstring
     """Strided convolution-upsampling-based VAE using reflection-padding and
     increasing feature maps in decoder.
@@ -254,29 +272,48 @@ class IncrFeatStridedConvFCUpsampReflectPadVAE():
         # Parameter Initialization
         self.kernel_size = kernel_size
         self.latent_space_dims = latent_space_dims
-        self.input = keras.Input(shape=(256, 3), name='input_streamline')
 
-        self.encoder = Encoder(latent_space_dims=self.latent_space_dims,
-                               kernel_size=self.kernel_size)
-        encoded = self.encoder(self.input)
-        z_mean_mock = np.random.normal(size=(10, self.latent_space_dims)).astype(np.float32)
-        z_log_var_mock = np.random.normal(size=(10, self.latent_space_dims)).astype(np.float32)
+        self.name = 'IncrFeatStridedConvFCUpsampReflectPadVAE'
+        # Instantiation
+        self.encoder, self.decoder = init_model(latent_space_dims=latent_space_dims,
+                                                kernel_size=kernel_size)
 
-        self.sampling = ReparametrizationTrickSampling()
-        z = self.sampling(inputs=([z_mean_mock, z_log_var_mock]))  # Dummy input for sampling mean=0 and log_var=1
-        self.decoder = Decoder(encoder_out_size=z.shape,
-                               latent_space_dims=self.latent_space_dims,
-                               kernel_size=self.kernel_size)
-        decoded = self.decoder(z)
+        # Metrics
+        self.total_loss_tracker = keras.metrics.Mean(name="total_loss")
+        self.reconstruction_loss_tracker = keras.metrics.Mean(
+            name="reconstruction_loss"
+        )
+        self.kl_loss_tracker = keras.metrics.Mean(name="kl_loss")
 
-    def __call__(self, x):
-        z_mean, z_log_var = self.encoder(x)
-        z = self.sampling((z_mean, z_log_var))
-        reconstructed = self.decoder(z)
-        # Add KL divergence regularization loss
-        kl_loss = -0.5 * tf.reduce_mean(z_log_var - tf.square(z_mean) - tf.exp(z_log_var) + 1)
-        self.add_loss(kl_loss)
-        return reconstructed
+    @property
+    def metrics(self):
+        return [self.total_loss_tracker,
+                self.reconstruction_loss_tracker,
+                self.kl_loss_tracker]
+
+    def train_step(self, data):
+        with tf.GradientTape() as tape:
+            z_mean, z_log_var, z = self.encoder(data)
+            reconstruction = self.decoder(z)
+            reconstruction_loss = ops.mean(
+                ops.sum(
+                    keras.losses.binary_crossentropy(data, reconstruction),
+                    axis=(1, 2),
+                )
+            )
+            kl_loss = -0.5 * (1 + z_log_var - ops.square(z_mean) - ops.exp(z_log_var))
+            kl_loss = ops.mean(ops.sum(kl_loss, axis=1))
+            total_loss = reconstruction_loss + kl_loss
+        grads = tape.gradient(total_loss, self.trainable_weights)
+        self.optimizer.apply_gradients(zip(grads, self.trainable_weights))
+        self.total_loss_tracker.update_state(total_loss)
+        self.reconstruction_loss_tracker.update_state(reconstruction_loss)
+        self.kl_loss_tracker.update_state(kl_loss)
+        return {
+            "loss": self.total_loss_tracker.result(),
+            "reconstruction_loss": self.reconstruction_loss_tracker.result(),
+            "kl_loss": self.kl_loss_tracker.result(),
+        }
 
     def compile(self, **kwargs):
         """
@@ -284,16 +321,6 @@ class IncrFeatStridedConvFCUpsampReflectPadVAE():
         """
         kwargs['optimizer'].weight_decay = 0.13
         self.model.compile(**kwargs)
-
-    def summary(self, **kwargs):
-        """
-        Get the summary of the model.
-        # TODO: Complete docstring
-        The summary is textual and includes information about:
-        The layers and their order in the model.
-        The output shape of each layer.
-        """
-        return self.model.summary(**kwargs)
 
     def fit(self, *args, **kwargs,):
         """_summary_
@@ -311,17 +338,17 @@ class IncrFeatStridedConvFCUpsampReflectPadVAE():
             kwargs['x'] = np.array(kwargs['x'])
         if isinstance(kwargs['y'], nib.streamlines.ArraySequence):
             kwargs['y'] = np.array(kwargs['y'])
-        return self.model.fit(*args, **kwargs)
-        # TODO (perhaps): write train loop manually?
+
+        return self.fit(*args, **kwargs)
 
     def save_weights(self, *args, **kwargs):
         """_summary_
         # TODO: Complete docstring
         """
-        self.model.save_weights(*args, **kwargs)
+        self.save_weights(*args, **kwargs)
 
     def save(self, *args, **kwargs):
         """_summary_
         # TODO: Complete docstring
         """
-        self.model.save(*args, **kwargs)
+        self.save(*args, **kwargs)
