@@ -12,10 +12,6 @@ from tractoencoder_gsoc.utils import pre_pad
 from tractoencoder_gsoc.utils import dict_kernel_size_flatten_encoder_shape
 
 
-# TODO (general): Add typing suggestions to methods where needed/advised/possible
-# TODO (general): Add docstrings to all functions and mthods
-
-
 class ReparametrizationTrickSampling(layers.Layer):
     """Uses (z_mean, z_log_var) to sample z, the vector encoding a digit."""
     def __init__(self, **kwargs):
@@ -37,18 +33,14 @@ class Encoder(Layer):
     def __init__(self, latent_space_dims=32, kernel_size=3, **kwargs):
         super(Encoder, self).__init__(**kwargs)
 
-        # TODO: Add comments to the architecture of the model
         self.latent_space_dims = latent_space_dims
         self.kernel_size = kernel_size
 
         # Weight and bias initializers for Conv1D layers (matching PyTorch initialization)
-        # Link: https://pytorch.org/docs/stable/generated/torch.nn.Conv1d.html (Variables section)
-        # Weights
         self.k_conv1d_weights_initializer = sqrt(1 / (3 * self.kernel_size))
         self.conv1d_weights_initializer = initializers.RandomUniform(minval=-self.k_conv1d_weights_initializer,
                                                                      maxval=self.k_conv1d_weights_initializer,
                                                                      seed=2208)
-        # Biases
         self.k_conv1d_biases_initializer = self.k_conv1d_weights_initializer
         self.conv1d_biases_initializer = self.conv1d_weights_initializer
 
@@ -91,14 +83,10 @@ class Encoder(Layer):
 
         self.flatten = layers.Flatten(name='flatten')
 
-        # For Dense layers
-        # Link: https://pytorch.org/docs/stable/generated/torch.nn.Linear.html (Variables section)
-        # Weights
         self.k_dense_weights_initializer = sqrt(1 / dict_kernel_size_flatten_encoder_shape[self.kernel_size])
         self.dense_weights_initializer = initializers.RandomUniform(minval=-self.k_dense_weights_initializer,
                                                                     maxval=self.k_dense_weights_initializer,
                                                                     seed=2208)
-        # Biases
         self.k_dense_biases_initializer = self.k_dense_weights_initializer
         self.dense_biases_initializer = self.dense_weights_initializer
 
@@ -110,7 +98,6 @@ class Encoder(Layer):
                                       kernel_initializer=self.dense_weights_initializer,
                                       bias_initializer=self.dense_biases_initializer)
 
-        # Sampling Layer
         self.sampling = ReparametrizationTrickSampling()
 
     def get_config(self):
@@ -139,12 +126,9 @@ class Encoder(Layer):
 
         self.encoder_out_size = h6.shape[1:]
 
-        # Flatten
-        # First transpose the tensor to match the PyTorch implementation so the flattening is equal
         h7 = tf.transpose(h6, perm=[0, 2, 1])
         h7 = self.flatten(h7)
 
-        # Get the distribution mean and log variancee
         z_mean = self.z_mean(h7)
         z_log_var = self.z_log_var(h7)
         z = self.sampling([z_mean, z_log_var])
@@ -163,7 +147,7 @@ class Decoder(Layer):
         self.encoder_out_size = encoder_out_size
 
         self.fc2 = layers.Dense(8192, name="fc2")
-        # TODO (general): Add comments to the architecture of the model
+
         self.decod_conv1 = pre_pad(
             layers.Conv1D(512, self.kernel_size, strides=1, padding='valid',
                           name="decoder_conv1")
@@ -209,12 +193,9 @@ class Decoder(Layer):
         return cls(encoder_out_size, kernel_size, **config)
 
     def call(self, input_data):
-        # z: latent vector sampled from z_mean and z_log_var using the
-        # reparametrization trick
         z = input_data
         fc = self.fc2(z)
 
-        # Reshape to match encoder output size
         fc_reshape = tf.reshape(fc, (-1, self.encoder_out_size[0],
                                      self.encoder_out_size[1]))
 
@@ -236,30 +217,24 @@ class Decoder(Layer):
 def init_model(latent_space_dims=32, kernel_size=3):
     input_data = keras.Input(shape=(256, 3), name='input_streamline')
 
-    # encode
     encoder = Encoder(latent_space_dims=latent_space_dims,
                       kernel_size=kernel_size)
-    # this is the latent vector sampled with the reparametrization trick
     encoder_output = encoder(input_data)
     z_mean, z_log_var, z = encoder_output
-    # Instantiate encoder model
     model_encoder = Model(input_data, (z_mean, z_log_var, z), name="Encoder")
 
-    # decode
     latent_input = keras.Input(shape=(latent_space_dims,), name='z_sampling')
     decoder = Decoder(encoder.encoder_out_size,
                       kernel_size=kernel_size)
     decoded = decoder(latent_input)
     output_data = decoded
 
-    # Instantiate model and name it
     model_decoder = Model(latent_input, output_data, name="Decoder")
 
     return model_encoder, model_decoder
 
 
 class IncrFeatStridedConvFCUpsampReflectPadVAE(Model):
-    # TODO: Complete docstring
     """Strided convolution-upsampling-based VAE using reflection-padding and
     increasing feature maps in decoder.
     """
@@ -267,16 +242,13 @@ class IncrFeatStridedConvFCUpsampReflectPadVAE(Model):
     def __init__(self, latent_space_dims=32, kernel_size=3, **kwargs):
         super(IncrFeatStridedConvFCUpsampReflectPadVAE, self).__init__(**kwargs)
 
-        # Parameter Initialization
         self.kernel_size = kernel_size
         self.latent_space_dims = latent_space_dims
 
         self.name = 'IncrFeatStridedConvFCUpsampReflectPadVAE'
-        # Instantiation
         self.encoder, self.decoder = init_model(latent_space_dims=latent_space_dims,
                                                 kernel_size=kernel_size)
 
-        # Metrics
         self.total_loss_tracker = keras.metrics.Mean(name="total_loss")
         self.reconstruction_loss_tracker = keras.metrics.Mean(
             name="reconstruction_loss"
@@ -289,13 +261,12 @@ class IncrFeatStridedConvFCUpsampReflectPadVAE(Model):
                 self.reconstruction_loss_tracker,
                 self.kl_loss_tracker]
 
+    @tf.function
     def train_step(self, data):
-        epsilon = 1e-7  # To prevent log(0) in kl_loss
+        input_data, _ = data  # Extract the actual data
         with tf.GradientTape() as tape:
-            input_data, _ = data
             z_mean, z_log_var, z = self.encoder(input_data, training=True)
-            reconstruction = self.decoder(z)
-            reconstruction = tf.clip_by_value(reconstruction, epsilon, 1 - epsilon)  # Clip reconstruction values
+            reconstruction = self.decoder(z, training=True)
             binary_cross_entropy = keras.losses.binary_crossentropy(input_data,
                                                                     reconstruction)
             reconstruction_loss = tf.reduce_mean(
@@ -304,12 +275,10 @@ class IncrFeatStridedConvFCUpsampReflectPadVAE(Model):
                     axis=1,
                 )
             )
-            kl_loss = -0.5 * (1 + z_log_var - tf.square(z_mean) - tf.exp(z_log_var))
-            kl_loss = tf.reduce_mean(tf.reduce_sum(kl_loss, axis=1))
+            kl_loss = -0.5 * (1 + z_log_var - ops.square(z_mean) - ops.exp(z_log_var))
+            kl_loss = ops.mean(ops.sum(kl_loss, axis=1))
             total_loss = reconstruction_loss + kl_loss
-        print(total_loss)
         grads = tape.gradient(total_loss, self.trainable_weights)
-        grads = [tf.clip_by_value(grad, -1., 1.) for grad in grads]  # Clip gradients to prevent explosion
         self.optimizer.apply_gradients(zip(grads, self.trainable_weights))
         self.total_loss_tracker.update_state(total_loss)
         self.reconstruction_loss_tracker.update_state(reconstruction_loss)
@@ -321,22 +290,15 @@ class IncrFeatStridedConvFCUpsampReflectPadVAE(Model):
         }
 
     def compile(self, **kwargs):
-        """
-        Configure the model for training
-        """
         if 'optimizer' in kwargs:
             if hasattr(kwargs['optimizer'], 'weight_decay'):
                 kwargs['optimizer'].weight_decay = 0.13
             else:
                 print("Optimizer does not have a weight_decay attribute. Ignoring...")
 
-        # Call the superclass's compile with the modified kwargs
         super().compile(**kwargs)
 
     def call(self, input_data):
-        """
-        # TODO: Complete docstring
-        """
         x = input_data
         z_mean, z_log_var, z = self.encoder(x)
         decoded = self.decoder(z)
@@ -344,17 +306,6 @@ class IncrFeatStridedConvFCUpsampReflectPadVAE(Model):
         return decoded
 
     def fit(self, *args, **kwargs):
-        """_summary_
-        # TODO: Complete docstring
-        Args:
-            x (_type_): _description_
-            y (_type_): _description_
-            batch_size (_type_, optional): _description_. Defaults to None.
-            epochs (int, optional): _description_. Defaults to 1.
-
-        Returns:
-            _type_: _description_
-        """
         if isinstance(kwargs['x'], nib.streamlines.ArraySequence):
             kwargs['x'] = np.array(kwargs['x'])
         if isinstance(kwargs['y'], nib.streamlines.ArraySequence):
@@ -363,13 +314,7 @@ class IncrFeatStridedConvFCUpsampReflectPadVAE(Model):
         return super().fit(*args, **kwargs)
 
     def save_weights(self, *args, **kwargs):
-        """_summary_
-        # TODO: Complete docstring
-        """
         self.save_weights(*args, **kwargs)
 
     def save(self, *args, **kwargs):
-        """_summary_
-        # TODO: Complete docstring
-        """
         self.save(*args, **kwargs)
