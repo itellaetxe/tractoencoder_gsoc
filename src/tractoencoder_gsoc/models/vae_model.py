@@ -15,6 +15,9 @@ from tractoencoder_gsoc.utils import dict_kernel_size_flatten_encoder_shape
 # TODO (general): Add typing suggestions to methods where needed/advised/possible
 # TODO (general): Add docstrings to all functions and mthods
 
+def safe_exp(x):
+    # Safe exp operation to prevent exp from producing inf values
+    return tf.clip_by_value(tf.exp(x), -1e20, 1e20)
 
 class ReparametrizationTrickSampling(layers.Layer):
     """Uses (z_mean, z_log_var) to sample z, the vector encoding a digit."""
@@ -22,15 +25,16 @@ class ReparametrizationTrickSampling(layers.Layer):
         super(ReparametrizationTrickSampling, self).__init__(**kwargs)
         self.seed_generator = keras.random.SeedGenerator(2208)
 
-    def call(self, inputs: tuple[list] = ([0], [1.0])):
+    def call(self, inputs):
         z_mean, z_log_var = inputs
         batch = ops.shape(z_mean)[0]
         dim = ops.shape(z_mean)[1]
 
-        # Reparametrization trick
-        epsilon = keras.random.normal(shape=(batch, dim),
+        # Reparametrization trick (z = z_mean + sqrt(var) * epsilon)
+        epsilon = keras.random.normal(shape=(batch,
+                                             dim),
                                       seed=self.seed_generator)
-        return z_mean + ops.exp(0.5 * z_log_var) * epsilon
+        return z_mean + safe_exp(0.5 * z_log_var) * epsilon
 
 
 class Encoder(Layer):
@@ -94,21 +98,31 @@ class Encoder(Layer):
         # For Dense layers
         # Link: https://pytorch.org/docs/stable/generated/torch.nn.Linear.html (Variables section)
         # Weights
-        self.k_dense_weights_initializer = sqrt(1 / dict_kernel_size_flatten_encoder_shape[self.kernel_size])
-        self.dense_weights_initializer = initializers.RandomUniform(minval=-self.k_dense_weights_initializer,
-                                                                    maxval=self.k_dense_weights_initializer,
-                                                                    seed=2208)
-        # Biases
-        self.k_dense_biases_initializer = self.k_dense_weights_initializer
-        self.dense_biases_initializer = self.dense_weights_initializer
+        self.k_z_mean_weights_initializer = sqrt(1 / dict_kernel_size_flatten_encoder_shape[self.kernel_size])
+        self.z_mean_weights_initializer = initializers.RandomUniform(minval=-self.k_z_mean_weights_initializer,
+                                                                     maxval=self.k_z_mean_weights_initializer,
+                                                                     seed=2208)
 
+        self.k_z_log_var_weights_initializer = sqrt(1 / dict_kernel_size_flatten_encoder_shape[self.kernel_size])
+        self.z_log_var_weights_initializer = initializers.RandomUniform(minval=-self.k_z_log_var_weights_initializer,
+                                                                        maxval=self.k_z_log_var_weights_initializer,
+                                                                        seed=1102)
+
+        # Biases
+        self.k_z_mean_biases_initializer = self.k_z_mean_weights_initializer
+        self.z_mean_biases_initializer = self.z_mean_weights_initializer
+
+        self.k_z_log_var_biases_initializer = self.k_z_log_var_weights_initializer
+        self.z_log_var_biases_initializer = self.z_log_var_weights_initializer
+
+        # Instantiate multilayer perceptron for mean and log variance
         self.z_mean = layers.Dense(self.latent_space_dims, name='z_mean',
-                                   kernel_initializer=self.dense_weights_initializer,
-                                   bias_initializer=self.dense_biases_initializer)
+                                   kernel_initializer=self.z_mean_weights_initializer,
+                                   bias_initializer=self.z_mean_biases_initializer)
 
         self.z_log_var = layers.Dense(self.latent_space_dims, name='z_log_bar',
-                                      kernel_initializer=self.dense_weights_initializer,
-                                      bias_initializer=self.dense_biases_initializer)
+                                      kernel_initializer=self.z_log_var_weights_initializer,
+                                      bias_initializer=self.z_log_var_biases_initializer)
 
         # Sampling Layer
         self.sampling = ReparametrizationTrickSampling()
@@ -277,11 +291,12 @@ class IncrFeatStridedConvFCUpsampReflectPadVAE(Model):
                                                 kernel_size=kernel_size)
 
         # Metrics
-        self.total_loss_tracker = keras.metrics.Mean(name="total_loss")
-        self.reconstruction_loss_tracker = keras.metrics.Mean(
+        self.total_loss_tracker = tf.keras.metrics.Mean(name="total_loss")
+        self.reconstruction_loss_tracker = tf.keras.metrics.Mean(
             name="reconstruction_loss"
         )
-        self.kl_loss_tracker = keras.metrics.Mean(name="kl_loss")
+        self.kl_loss_tracker = tf.keras.metrics.Mean(name="kl_loss")
+        self.kl_weight = tf.Variable(0.005, trainable=False)
 
     @property
     def metrics(self):
@@ -292,22 +307,21 @@ class IncrFeatStridedConvFCUpsampReflectPadVAE(Model):
     def train_step(self, data):
         epsilon = 1e-7  # To prevent log(0) in kl_loss
         with tf.GradientTape() as tape:
-            input_data, _ = data
+            input_data = data
             z_mean, z_log_var, z = self.encoder(input_data, training=True)
             reconstruction = self.decoder(z)
             reconstruction = tf.clip_by_value(reconstruction, epsilon, 1 - epsilon)  # Clip reconstruction values
-            binary_cross_entropy = keras.losses.binary_crossentropy(input_data,
+            mean_squared_error = tf.keras.losses.mse(input_data,
                                                                     reconstruction)
-            reconstruction_loss = tf.reduce_mean(
-                tf.reduce_sum(
-                    binary_cross_entropy,
+            reconstruction_loss = ops.mean(
+                ops.sum(
+                    mean_squared_error,
                     axis=1,
                 )
             )
-            kl_loss = -0.5 * (1 + z_log_var - tf.square(z_mean) - tf.exp(z_log_var))
-            kl_loss = tf.reduce_mean(tf.reduce_sum(kl_loss, axis=1))
+            kl_loss = 0 * (1 + z_log_var - ops.square(z_mean) - safe_exp(0.5 * z_log_var))
+            kl_loss = ops.mean(ops.sum(kl_loss, axis=1))
             total_loss = reconstruction_loss + kl_loss
-        print(total_loss)
         grads = tape.gradient(total_loss, self.trainable_weights)
         grads = [tf.clip_by_value(grad, -1., 1.) for grad in grads]  # Clip gradients to prevent explosion
         self.optimizer.apply_gradients(zip(grads, self.trainable_weights))
@@ -357,8 +371,6 @@ class IncrFeatStridedConvFCUpsampReflectPadVAE(Model):
         """
         if isinstance(kwargs['x'], nib.streamlines.ArraySequence):
             kwargs['x'] = np.array(kwargs['x'])
-        if isinstance(kwargs['y'], nib.streamlines.ArraySequence):
-            kwargs['y'] = np.array(kwargs['y'])
 
         return super().fit(*args, **kwargs)
 
