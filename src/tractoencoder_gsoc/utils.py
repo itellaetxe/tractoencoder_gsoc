@@ -38,11 +38,11 @@ def pre_pad(layer: Layer):
 
 def read_data(tractogram_fname: str, img_fname: str = None):
     # Load the anatomical data
-    if img_fname is not None:
+    if img_fname is None:
+        img_header = nib.Nifti1Header()
+    else:
         img = nib.load(img_fname)
         img_header = img.header
-    else:
-        img_header = nib.Nifti1Header()
 
     # Load tractography data (assumes everything is resampled to 256 points)
     # from a TRK file

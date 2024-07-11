@@ -30,11 +30,11 @@ class ReparametrizationTrickSampling(layers.Layer):
         batch = ops.shape(z_mean)[0]
         dim = ops.shape(z_mean)[1]
 
-        # Reparametrization trick (z = z_mean + sqrt(var) * epsilon)
+        # Reparametrization trick (z = z_mean + std_deviation * epsilon)
         epsilon = keras.random.normal(shape=(batch,
                                              dim),
                                       seed=self.seed_generator)
-        return z_mean + safe_exp(0.5 * z_log_var) * epsilon
+        return z_mean + ops.exp(0.5 * z_log_var) * epsilon
 
 
 class Encoder(Layer):
@@ -120,7 +120,7 @@ class Encoder(Layer):
                                    kernel_initializer=self.z_mean_weights_initializer,
                                    bias_initializer=self.z_mean_biases_initializer)
 
-        self.z_log_var = layers.Dense(self.latent_space_dims, name='z_log_bar',
+        self.z_log_var = layers.Dense(self.latent_space_dims, name='z_log_var',
                                       kernel_initializer=self.z_log_var_weights_initializer,
                                       bias_initializer=self.z_log_var_biases_initializer)
 
@@ -298,11 +298,17 @@ class IncrFeatStridedConvFCUpsampReflectPadVAE(Model):
         self.kl_loss_tracker = tf.keras.metrics.Mean(name="kl_loss")
         self.kl_weight = tf.Variable(0.005, trainable=False)
 
+        # At the beginning of your script
+        self.writer = tf.summary.create_file_writer("./logs")
+
     @property
     def metrics(self):
         return [self.total_loss_tracker,
                 self.reconstruction_loss_tracker,
                 self.kl_loss_tracker]
+
+    def loss_function(self, y_true, y_pred):
+        pass
 
     def train_step(self, data):
         epsilon = 1e-7  # To prevent log(0) in kl_loss
@@ -310,24 +316,24 @@ class IncrFeatStridedConvFCUpsampReflectPadVAE(Model):
             input_data = data
             z_mean, z_log_var, z = self.encoder(input_data, training=True)
             reconstruction = self.decoder(z)
-            reconstruction = tf.clip_by_value(reconstruction, epsilon, 1 - epsilon)  # Clip reconstruction values
-            mean_squared_error = tf.keras.losses.mse(input_data,
-                                                                    reconstruction)
-            reconstruction_loss = ops.mean(
-                ops.sum(
-                    mean_squared_error,
-                    axis=1,
-                )
-            )
-            kl_loss = 0 * (1 + z_log_var - ops.square(z_mean) - safe_exp(0.5 * z_log_var))
+            reconstruction_loss = ops.mean(tf.keras.losses.mse(input_data, reconstruction), axis=1)
+            kl_loss = -0.5 * (1 + z_log_var - ops.square(z_mean) - ops.exp(z_log_var))
             kl_loss = ops.mean(ops.sum(kl_loss, axis=1))
+
             total_loss = reconstruction_loss + kl_loss
+
         grads = tape.gradient(total_loss, self.trainable_weights)
-        grads = [tf.clip_by_value(grad, -1., 1.) for grad in grads]  # Clip gradients to prevent explosion
         self.optimizer.apply_gradients(zip(grads, self.trainable_weights))
         self.total_loss_tracker.update_state(total_loss)
         self.reconstruction_loss_tracker.update_state(reconstruction_loss)
         self.kl_loss_tracker.update_state(kl_loss)
+
+        # Inside your training loop, after calculating total_loss
+        with self.writer.as_default():
+            tf.summary.scalar('Total Loss', total_loss, step=self.optimizer.iterations)
+            tf.summary.scalar('Reconstruction Loss', reconstruction_loss, step=self.optimizer.iterations)
+            tf.summary.scalar('KL Loss', kl_loss, step=self.optimizer.iterations)
+            self.writer.flush()
         return {
             "loss": self.total_loss_tracker.result(),
             "reconstruction_loss": self.reconstruction_loss_tracker.result(),
