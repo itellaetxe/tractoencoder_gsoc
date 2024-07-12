@@ -23,7 +23,6 @@ if __name__ == '__main__':
     # Example of using the model
     output = model(input_data)
     model.summary()
-    tf.keras.utils.plot_model(model, to_file='model.png', show_shapes=True)
 
     # Define the TensorBoard callback
     tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir="./logs")
@@ -32,6 +31,6 @@ if __name__ == '__main__':
     model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=0.000668))
     model.fit(x=input_data, epochs=50, batch_size=2,
               callbacks=[tensorboard_callback])
-    
+
     # Compute reconstruction after training
-    
+    # TODO

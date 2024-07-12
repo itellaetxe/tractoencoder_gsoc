@@ -34,7 +34,7 @@ class ReparametrizationTrickSampling(layers.Layer):
         epsilon = keras.random.normal(shape=(batch,
                                              dim),
                                       seed=self.seed_generator)
-        return z_mean + ops.exp(0.5 * z_log_var) * epsilon
+        return z_mean + ops.exp(0.5 * z_log_var) * epsilon  # NOTE: Should I clip ops.exp(...) to prevent inf values?
 
 
 class Encoder(Layer):
@@ -316,8 +316,8 @@ class IncrFeatStridedConvFCUpsampReflectPadVAE(Model):
             input_data = data
             z_mean, z_log_var, z = self.encoder(input_data, training=True)
             reconstruction = self.decoder(z)
-            reconstruction_loss = ops.mean(tf.keras.losses.mse(input_data, reconstruction), axis=1)
-            kl_loss = -0.5 * (1 + z_log_var - ops.square(z_mean) - ops.exp(z_log_var))
+            reconstruction_loss = ops.mean(tf.keras.losses.mse(input_data, reconstruction), axis=1)  # NOTE: Check axis, not sure if it is correct...
+            kl_loss = - 0.5 * (1 + z_log_var - ops.square(z_mean) - ops.exp(z_log_var))  # NOTE: Should I clip ops.exp(...) to prevent inf values?
             kl_loss = ops.mean(ops.sum(kl_loss, axis=1))
 
             total_loss = reconstruction_loss + kl_loss
