@@ -314,6 +314,13 @@ class IncrFeatStridedConvFCUpsampReflectPadVAE(Model):
         # Instantiate TensorBoard writer
         self.writer = tf.summary.create_file_writer("./logs")
 
+        # Epoch
+        # TODO: To implement cyclic annealing of beta
+
+    def compute_beta(self):
+        # Compute the beta value for cycling KL loss importance
+        pass
+
     @property
     def metrics(self):
         return [self.total_loss_tracker,
@@ -321,6 +328,7 @@ class IncrFeatStridedConvFCUpsampReflectPadVAE(Model):
                 self.kl_loss_tracker]
 
     def train_step(self, data):
+        beta = 1.0  # TODO: Implement beta cyclic annealing
         with tf.GradientTape() as tape:
             input_data = data
             z_mean, z_log_var, z = self.encoder(input_data, training=True)
@@ -328,7 +336,7 @@ class IncrFeatStridedConvFCUpsampReflectPadVAE(Model):
             reconstruction_loss = tf.reduce_mean(tf.square(tf.subtract(input_data, reconstruction)))  # NOTE: Check axis, not sure if it is correct...
             kl_loss = - 0.5 * (1 + z_log_var - ops.square(z_mean) - ops.exp(z_log_var))  # NOTE: Should I clip ops.exp(...) to prevent inf values?
             kl_loss = ops.mean(ops.sum(kl_loss, axis=1))
-            total_loss = reconstruction_loss + kl_loss
+            total_loss = reconstruction_loss + beta * kl_loss
 
         grads = tape.gradient(total_loss, self.trainable_weights)
         self.optimizer.apply_gradients(zip(grads, self.trainable_weights))
