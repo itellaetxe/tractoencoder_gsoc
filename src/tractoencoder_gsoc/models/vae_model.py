@@ -33,8 +33,8 @@ class ReparametrizationTrickSampling(layers.Layer):
         # Reparametrization trick (z = z_mean + std_deviation * epsilon)
         epsilon = tf.keras.random.normal(shape=(batch, dim),
                                          seed=self.seed_generator,
-                                         stddev=0.3)
-        return z_mean + safe_exp(0.5 * z_log_var) * epsilon  # NOTE: Should I clip ops.exp(...) to prevent inf values?
+                                         stddev=1)
+        return z_mean + safe_exp(0.5 * z_log_var) * epsilon
 
 
 class Encoder(Layer):
@@ -333,8 +333,8 @@ class IncrFeatStridedConvFCUpsampReflectPadVAE(Model):
             input_data = data
             z_mean, z_log_var, z = self.encoder(input_data, training=True)
             reconstruction = self.decoder(z)
-            reconstruction_loss = tf.reduce_mean(tf.square(tf.subtract(input_data, reconstruction)))  # NOTE: Check axis, not sure if it is correct...
-            kl_loss = - 0.5 * (1 + z_log_var - ops.square(z_mean) - ops.exp(z_log_var))  # NOTE: Should I clip ops.exp(...) to prevent inf values?
+            reconstruction_loss = tf.reduce_mean(tf.square(tf.subtract(input_data, reconstruction)))
+            kl_loss = - 0.5 * (1 + z_log_var - ops.square(z_mean) - safe_exp(z_log_var))
             kl_loss = ops.mean(ops.sum(kl_loss, axis=1))
             total_loss = reconstruction_loss + beta * kl_loss
 
