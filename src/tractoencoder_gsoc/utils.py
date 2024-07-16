@@ -106,7 +106,13 @@ def write_model_specs(spec_file: str, model, arguments) -> None:
         else:
             f.write(f"### Model: {model.name}\n\n")
 
-        f.write(f"### Input Data: {os.path.abspath(arguments.input_trk)}\n")
+        if len(arguments.input_trk) > 1:
+            f.write("### Input Data:\n")
+            for trk_path in arguments.input_trk:
+                f.write(f"## {os.path.abspath(trk_path)}\n")
+        else:
+            f.write(f"### Input Data: {os.path.abspath(arguments.input_trk)}\n")
+
         f.write(f"### Anatomical Data: {os.path.abspath(arguments.input_anat)}\n")
         f.write(f"### Output Directory: {os.path.abspath(arguments.output_dir)}\n\n")
         f.write("### Training parameters:\n")
