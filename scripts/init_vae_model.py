@@ -31,7 +31,7 @@ if __name__ == '__main__':
 
     # Try the train method (x and y should be the same)
     model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=0.000668))
-    model.fit(x=input_data, epochs=100, batch_size=300,
+    model.fit(x=input_data, epochs=10, batch_size=300,
               callbacks=[tensorboard_callback])
 
     # Compute reconstruction after training, and plot it

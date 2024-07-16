@@ -61,7 +61,8 @@ def read_data(tractogram_fname: str, img_fname: str = None):
     return strml
 
 
-def prepare_tensor_from_file(tractogram_fname: str, img_fname: str) -> tf.Tensor:
+def prepare_tensor_from_file(tractogram_fname: str,
+                             img_fname: str) -> tf.Tensor:
     strml = read_data(tractogram_fname, img_fname)
 
     # Dump streamline data to array
@@ -100,7 +101,11 @@ def write_model_specs(spec_file: str, model, arguments) -> None:
         os.makedirs(os.path.dirname(spec_file))
 
     with open(spec_file, "w") as f:
-        f.write(f"### Model: {model.model.name}\n\n")
+        if hasattr(model, "model"):
+            f.write(f"### Model: {model.model.name}\n\n")
+        else:
+            f.write(f"### Model: {model.name}\n\n")
+
         f.write(f"### Input Data: {os.path.abspath(arguments.input_trk)}\n")
         f.write(f"### Anatomical Data: {os.path.abspath(arguments.input_anat)}\n")
         f.write(f"### Output Directory: {os.path.abspath(arguments.output_dir)}\n\n")
@@ -112,8 +117,13 @@ def write_model_specs(spec_file: str, model, arguments) -> None:
         f.write(f"## Latent Space Dimensions: {model.latent_space_dims}\n")
         f.write(f"## Kernel Size: {model.kernel_size}\n\n")
         f.write("### Model Architecture:\n")
-        for weight in model.model.weights:
-            f.write(f"## Layer: {weight.path}\n")
+
+        if hasattr(model, "model"):
+            for weight in model.model.weights:
+                f.write(f"## Layer: {weight.path}\n")
+        else:
+            for weight in model.weights:
+                f.write(f"## Layer: {weight.path}\n")
 
     print(f"INFO: Model specs written to {spec_file}")
 

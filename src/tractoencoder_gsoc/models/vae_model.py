@@ -6,7 +6,7 @@ import nibabel as nib
 import tensorflow as tf
 import tensorflow.keras.ops as ops
 from tensorflow import keras
-from tensorflow.keras import layers, Sequential, Layer, Model, initializers
+from tensorflow.keras import layers, Layer, Model, initializers
 
 from tractoencoder_gsoc.utils import pre_pad
 from tractoencoder_gsoc.utils import dict_kernel_size_flatten_encoder_shape
@@ -400,10 +400,10 @@ class IncrFeatStridedConvFCUpsampReflectPadVAE(Model):
         """_summary_
         # TODO: Complete docstring
         """
-        self.save_weights(*args, **kwargs)
+        super().save_weights(*args, **kwargs)
 
     def save(self, *args, **kwargs):
         """_summary_
         # TODO: Complete docstring
         """
-        self.save(*args, **kwargs)
+        super().save(*args, **kwargs)
