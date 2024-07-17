@@ -20,7 +20,7 @@ if __name__ == "__main__":
 
     # Example of using the model
     model = vae_model.IncrFeatStridedConvFCUpsampReflectPadVAE(latent_space_dims=args.latent_space_dims,
-                                                             kernel_size=args.kernel_size)
+                                                               kernel_size=args.kernel_size)
 
     # Read data. If multiple trk files, read all and concatenate in numpy array along 1st axis
     if len(args.input_trk) == 1:
@@ -35,10 +35,22 @@ if __name__ == "__main__":
     # Compile the model, then fit it (train it)
     model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=args.learning_rate),
                   loss=tf.keras.losses.MeanSquaredError())
+
+    # Define training callbacks
+    # update_epoch_cb = utils.UpdateEpochCallback(model)
+    tensorboard_cb = tf.keras.callbacks.TensorBoard(log_dir=args.output_dir)
+    early_stopping_monitor = tf.keras.callbacks.EarlyStopping(monitor='reconstruction_loss',
+                                                              min_delta=0,
+                                                              patience=0,
+                                                              verbose=0,
+                                                              mode='auto',
+                                                              baseline=None,
+                                                              restore_best_weights=True
+                                                              )
     model.fit(x=input_data,
               epochs=args.epochs,
               batch_size=args.batch_size,
-              callbacks=[tf.keras.callbacks.TensorBoard(log_dir=args.output_dir)])
+              callbacks=[tensorboard_cb, early_stopping_monitor])
 
     # Save the model
     model_fname = os.path.join(args.output_dir, "model.weights.h5")
