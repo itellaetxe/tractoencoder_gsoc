@@ -111,7 +111,7 @@ def write_model_specs(spec_file: str, model, arguments) -> None:
             for trk_path in arguments.input_trk:
                 f.write(f"## {os.path.abspath(trk_path)}\n")
         else:
-            f.write(f"### Input Data: {os.path.abspath(arguments.input_trk)}\n")
+            f.write(f"### Input Data: {os.path.abspath(arguments.input_trk[0])}\n")
 
         f.write(f"### Anatomical Data: {os.path.abspath(arguments.input_anat)}\n")
         f.write(f"### Output Directory: {os.path.abspath(arguments.output_dir)}\n\n")
@@ -119,6 +119,8 @@ def write_model_specs(spec_file: str, model, arguments) -> None:
         f.write(f"## Batch Size: {arguments.batch_size}\n")
         f.write(f"## Epochs: {arguments.epochs}\n")
         f.write(f"## Learning Rate: {arguments.learning_rate}\n\n")
+        if hasattr(arguments, "beta"):
+            f.write(f"## Beta weight of KL loss: {arguments.beta}\n\n")
         f.write("### Model Parameters:\n")
         f.write(f"## Latent Space Dimensions: {model.latent_space_dims}\n")
         f.write(f"## Kernel Size: {model.kernel_size}\n\n")
@@ -188,6 +190,7 @@ def process_arguments_trk() -> argparse.Namespace:
     parser.add_argument("--kernel_size", type=int, default=3, help="Size of the kernel for the convolutional layers")
     parser.add_argument("--learning_rate", type=float, default=0.00068, help="Learning rate for the optimizer")
     parser.add_argument("--seed", type=int, default=2208, help="Seed for reproducibility")
+    parser.add_argument("--beta", type=float, default=1.0, help="Beta parameter for the KL divergence loss")
     args = parser.parse_args()
 
     # Sanity check of CLI arguments
@@ -210,6 +213,16 @@ def process_arguments_trk() -> argparse.Namespace:
     print(f"INFO: Your results will be stored at {args.output_dir}")
 
     return args
+
+
+class UpdateEpochCallback(tf.keras.callbacks.Callback):
+    def __init__(self, model):
+        super(UpdateEpochCallback, self).__init__()
+        self.model = model
+
+    def on_epoch_begin(self, epoch, logs=None):
+        # Update the model's current_epoch property at the start of each epoch
+        self.model.current_epoch.assign(epoch)
 
 
 # TODO: Translate function to TF

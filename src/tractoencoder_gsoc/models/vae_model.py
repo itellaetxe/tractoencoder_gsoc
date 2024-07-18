@@ -281,7 +281,7 @@ def init_model(latent_space_dims=32, kernel_size=3):
     # Instantiate model and name it
     model_decoder = Model(latent_input, output_data, name="Decoder")
 
-    return model_encoder, model_decoder
+    return model_encoder, model_decoder, encoder.encoder_out_size
 
 
 class IncrFeatStridedConvFCUpsampReflectPadVAE(Model):
@@ -290,18 +290,20 @@ class IncrFeatStridedConvFCUpsampReflectPadVAE(Model):
     increasing feature maps in decoder.
     """
 
-    def __init__(self, latent_space_dims=32, kernel_size=3, **kwargs):
+    def __init__(self, latent_space_dims=32, kernel_size=3,
+                 beta: float = 1.0, **kwargs):
         super(IncrFeatStridedConvFCUpsampReflectPadVAE, self).__init__(**kwargs)
 
         # Parameter Initialization
         self.kernel_size = kernel_size
         self.latent_space_dims = latent_space_dims
+        self.beta = beta
 
         self.name = 'IncrFeatStridedConvFCUpsampReflectPadVAE'
 
         # Instantiation
-        self.encoder, self.decoder = init_model(latent_space_dims=latent_space_dims,
-                                                kernel_size=kernel_size)
+        self.encoder, self.decoder, self.encoder_out_size = init_model(latent_space_dims=latent_space_dims,
+                                                                       kernel_size=kernel_size)
 
         # Metrics
         self.total_loss_tracker = tf.keras.metrics.Mean(name="total_loss")
@@ -309,17 +311,9 @@ class IncrFeatStridedConvFCUpsampReflectPadVAE(Model):
             name="reconstruction_loss"
         )
         self.kl_loss_tracker = tf.keras.metrics.Mean(name="kl_loss")
-        self.kl_weight = tf.Variable(0.005, trainable=False)
 
         # Instantiate TensorBoard writer
         self.writer = tf.summary.create_file_writer("./logs")
-
-        # Epoch
-        # TODO: To implement cyclic annealing of beta
-
-    def compute_beta(self):
-        # Compute the beta value for cycling KL loss importance
-        pass
 
     @property
     def metrics(self):
@@ -328,7 +322,6 @@ class IncrFeatStridedConvFCUpsampReflectPadVAE(Model):
                 self.kl_loss_tracker]
 
     def train_step(self, data):
-        beta = 1.0  # TODO: Implement beta cyclic annealing
         with tf.GradientTape() as tape:
             input_data = data
             z_mean, z_log_var, z = self.encoder(input_data, training=True)
@@ -336,7 +329,7 @@ class IncrFeatStridedConvFCUpsampReflectPadVAE(Model):
             reconstruction_loss = tf.reduce_mean(tf.square(tf.subtract(input_data, reconstruction)))
             kl_loss = - 0.5 * (1 + z_log_var - ops.square(z_mean) - safe_exp(z_log_var))
             kl_loss = ops.mean(ops.sum(kl_loss, axis=1))
-            total_loss = reconstruction_loss + beta * kl_loss
+            total_loss = reconstruction_loss + self.beta * kl_loss
 
         grads = tape.gradient(total_loss, self.trainable_weights)
         self.optimizer.apply_gradients(zip(grads, self.trainable_weights))
@@ -407,3 +400,26 @@ class IncrFeatStridedConvFCUpsampReflectPadVAE(Model):
         # TODO: Complete docstring
         """
         super().save(*args, **kwargs)
+
+    def get_config(self):
+        base_config = super().get_config()
+        config = {
+            "encoder_out_size": tf.keras.utils.serialize_keras_object(self.encoder_out_size),
+            "kernel_size": tf.keras.utils.serialize_keras_object(self.kernel_size),
+            "kl_beta": tf.keras.utils.serialize_keras_object(self.beta),
+            "latent_space_dims": tf.keras.utils.serialize_keras_object(self.latent_space_dims)
+        }
+        return {**base_config, **config}
+
+    @classmethod
+    def from_config(cls, config):
+        encoder_out_size = tf.keras.utils.deserialize_keras_object(config.pop('encoder_out_size'))
+        kernel_size = tf.keras.utils.deserialize_keras_object(config.pop('kernel_size'))
+        kl_beta = tf.keras.utils.deserialize_keras_object(config.pop('kl_beta'))
+        latent_space_dims = tf.keras.utils.deserialize_keras_object(config.pop('latent_space_dims'))
+
+        return cls(encoder_out_size,
+                   kernel_size,
+                   kl_beta,
+                   latent_space_dims,
+                   **config)

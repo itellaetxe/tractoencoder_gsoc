@@ -24,7 +24,7 @@ if __name__ == "__main__":
 
     # Read data. If multiple trk files, read all and concatenate in numpy array along 1st axis
     if len(args.input_trk) == 1:
-        input_data = utils.prepare_tensor_from_file(args.input_trk, args.input_anat)
+        input_data = utils.prepare_tensor_from_file(args.input_trk[0], args.input_anat)
     else:
         input_data = []
         for trk_path in args.input_trk:
@@ -41,16 +41,17 @@ if __name__ == "__main__":
     tensorboard_cb = tf.keras.callbacks.TensorBoard(log_dir=args.output_dir)
     early_stopping_monitor = tf.keras.callbacks.EarlyStopping(monitor='reconstruction_loss',
                                                               min_delta=0,
-                                                              patience=0,
+                                                              patience=15,
                                                               verbose=0,
-                                                              mode='auto',
+                                                              mode='min',
                                                               baseline=None,
                                                               restore_best_weights=True
                                                               )
-    model.fit(x=input_data,
-              epochs=args.epochs,
-              batch_size=args.batch_size,
-              callbacks=[tensorboard_cb, early_stopping_monitor])
+    # Save the training history
+    train_history = model.fit(x=input_data,
+                              epochs=args.epochs,
+                              batch_size=args.batch_size,
+                              callbacks=[tensorboard_cb, early_stopping_monitor])
 
     # Save the model
     model_fname = os.path.join(args.output_dir, "model.weights.h5")
