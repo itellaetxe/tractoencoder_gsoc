@@ -6,7 +6,7 @@ import nibabel as nib
 import tensorflow as tf
 import tensorflow.keras.ops as ops
 from tensorflow import keras
-from tensorflow.keras import layers, Sequential, Layer, Model, initializers
+from tensorflow.keras import layers, Layer, Model, initializers
 
 from tractoencoder_gsoc.utils import pre_pad
 from tractoencoder_gsoc.utils import dict_kernel_size_flatten_encoder_shape
@@ -17,7 +17,7 @@ from tractoencoder_gsoc.utils import dict_kernel_size_flatten_encoder_shape
 
 def safe_exp(x):
     # Safe exp operation to prevent exp from producing inf values
-    return tf.clip_by_value(tf.exp(x), -1e20, 1e20)
+    return tf.clip_by_value(tf.exp(x), -1e10, 1e10)
 
 class ReparametrizationTrickSampling(layers.Layer):
     """Uses (z_mean, z_log_var) to sample z, the vector encoding a digit."""
@@ -31,10 +31,10 @@ class ReparametrizationTrickSampling(layers.Layer):
         dim = ops.shape(z_mean)[1]
 
         # Reparametrization trick (z = z_mean + std_deviation * epsilon)
-        epsilon = keras.random.normal(shape=(batch,
-                                             dim),
-                                      seed=self.seed_generator)
-        return z_mean + ops.exp(0.5 * z_log_var) * epsilon
+        epsilon = tf.keras.random.normal(shape=(batch, dim),
+                                         seed=self.seed_generator,
+                                         stddev=1)
+        return z_mean + safe_exp(0.5 * z_log_var) * epsilon
 
 
 class Encoder(Layer):
@@ -62,36 +62,42 @@ class Encoder(Layer):
                           kernel_initializer=self.conv1d_weights_initializer,
                           bias_initializer=self.conv1d_biases_initializer)
         )
+        self.encod_batchnorm1 = layers.BatchNormalization(name="encoder_batchnorm1")
         self.encod_conv2 = pre_pad(
             layers.Conv1D(64, self.kernel_size, strides=2, padding='valid',
                           name="encoder_conv2",
                           kernel_initializer=self.conv1d_weights_initializer,
                           bias_initializer=self.conv1d_biases_initializer)
         )
+        self.encod_batchnorm2 = layers.BatchNormalization(name="encoder_batchnorm2")
         self.encod_conv3 = pre_pad(
             layers.Conv1D(128, self.kernel_size, strides=2, padding='valid',
                           name="encoder_conv3",
                           kernel_initializer=self.conv1d_weights_initializer,
                           bias_initializer=self.conv1d_biases_initializer)
         )
+        self.encod_batchnorm3 = layers.BatchNormalization(name="encoder_batchnorm3")
         self.encod_conv4 = pre_pad(
             layers.Conv1D(256, self.kernel_size, strides=2, padding='valid',
                           name="encoder_conv4",
                           kernel_initializer=self.conv1d_weights_initializer,
                           bias_initializer=self.conv1d_biases_initializer)
         )
+        self.encod_batchnorm4 = layers.BatchNormalization(name="encoder_batchnorm4")
         self.encod_conv5 = pre_pad(
             layers.Conv1D(512, self.kernel_size, strides=2, padding='valid',
                           name="encoder_conv5",
                           kernel_initializer=self.conv1d_weights_initializer,
                           bias_initializer=self.conv1d_biases_initializer)
         )
+        self.encod_batchnorm5 = layers.BatchNormalization(name="encoder_batchnorm5")
         self.encod_conv6 = pre_pad(
             layers.Conv1D(1024, self.kernel_size, strides=1, padding='valid',
                           name="encoder_conv6",
                           kernel_initializer=self.conv1d_weights_initializer,
                           bias_initializer=self.conv1d_biases_initializer)
         )
+        self.encod_batchnorm6 = layers.BatchNormalization(name="encoder_batchnorm6")
 
         self.flatten = layers.Flatten(name='flatten')
 
@@ -145,11 +151,17 @@ class Encoder(Layer):
         x = input_data
 
         h1 = tf.nn.relu(self.encod_conv1(x))
+        h1 = self.encod_batchnorm1(h1)
         h2 = tf.nn.relu(self.encod_conv2(h1))
+        h2 = self.encod_batchnorm2(h2)
         h3 = tf.nn.relu(self.encod_conv3(h2))
+        h3 = self.encod_batchnorm3(h3)
         h4 = tf.nn.relu(self.encod_conv4(h3))
+        h4 = self.encod_batchnorm4(h4)
         h5 = tf.nn.relu(self.encod_conv5(h4))
+        h5 = self.encod_batchnorm5(h5)
         h6 = self.encod_conv6(h5)
+        h6 = self.encod_batchnorm6(h6)
 
         self.encoder_out_size = h6.shape[1:]
 
@@ -269,7 +281,7 @@ def init_model(latent_space_dims=32, kernel_size=3):
     # Instantiate model and name it
     model_decoder = Model(latent_input, output_data, name="Decoder")
 
-    return model_encoder, model_decoder
+    return model_encoder, model_decoder, encoder.encoder_out_size
 
 
 class IncrFeatStridedConvFCUpsampReflectPadVAE(Model):
@@ -278,17 +290,20 @@ class IncrFeatStridedConvFCUpsampReflectPadVAE(Model):
     increasing feature maps in decoder.
     """
 
-    def __init__(self, latent_space_dims=32, kernel_size=3, **kwargs):
+    def __init__(self, latent_space_dims=32, kernel_size=3,
+                 beta: float = 1.0, **kwargs):
         super(IncrFeatStridedConvFCUpsampReflectPadVAE, self).__init__(**kwargs)
 
         # Parameter Initialization
         self.kernel_size = kernel_size
         self.latent_space_dims = latent_space_dims
+        self.beta = beta
 
         self.name = 'IncrFeatStridedConvFCUpsampReflectPadVAE'
+
         # Instantiation
-        self.encoder, self.decoder = init_model(latent_space_dims=latent_space_dims,
-                                                kernel_size=kernel_size)
+        self.encoder, self.decoder, self.encoder_out_size = init_model(latent_space_dims=latent_space_dims,
+                                                                       kernel_size=kernel_size)
 
         # Metrics
         self.total_loss_tracker = tf.keras.metrics.Mean(name="total_loss")
@@ -296,9 +311,8 @@ class IncrFeatStridedConvFCUpsampReflectPadVAE(Model):
             name="reconstruction_loss"
         )
         self.kl_loss_tracker = tf.keras.metrics.Mean(name="kl_loss")
-        self.kl_weight = tf.Variable(0.005, trainable=False)
 
-        # At the beginning of your script
+        # Instantiate TensorBoard writer
         self.writer = tf.summary.create_file_writer("./logs")
 
     @property
@@ -307,20 +321,15 @@ class IncrFeatStridedConvFCUpsampReflectPadVAE(Model):
                 self.reconstruction_loss_tracker,
                 self.kl_loss_tracker]
 
-    def loss_function(self, y_true, y_pred):
-        pass
-
     def train_step(self, data):
-        epsilon = 1e-7  # To prevent log(0) in kl_loss
         with tf.GradientTape() as tape:
             input_data = data
             z_mean, z_log_var, z = self.encoder(input_data, training=True)
             reconstruction = self.decoder(z)
-            reconstruction_loss = ops.mean(tf.keras.losses.mse(input_data, reconstruction), axis=1)
-            kl_loss = -0.5 * (1 + z_log_var - ops.square(z_mean) - ops.exp(z_log_var))
+            reconstruction_loss = tf.reduce_mean(tf.square(tf.subtract(input_data, reconstruction)))
+            kl_loss = - 0.5 * (1 + z_log_var - ops.square(z_mean) - safe_exp(z_log_var))
             kl_loss = ops.mean(ops.sum(kl_loss, axis=1))
-
-            total_loss = reconstruction_loss + kl_loss
+            total_loss = reconstruction_loss + self.beta * kl_loss
 
         grads = tape.gradient(total_loss, self.trainable_weights)
         self.optimizer.apply_gradients(zip(grads, self.trainable_weights))
@@ -384,10 +393,33 @@ class IncrFeatStridedConvFCUpsampReflectPadVAE(Model):
         """_summary_
         # TODO: Complete docstring
         """
-        self.save_weights(*args, **kwargs)
+        super().save_weights(*args, **kwargs)
 
     def save(self, *args, **kwargs):
         """_summary_
         # TODO: Complete docstring
         """
-        self.save(*args, **kwargs)
+        super().save(*args, **kwargs)
+
+    def get_config(self):
+        base_config = super().get_config()
+        config = {
+            "encoder_out_size": tf.keras.utils.serialize_keras_object(self.encoder_out_size),
+            "kernel_size": tf.keras.utils.serialize_keras_object(self.kernel_size),
+            "kl_beta": tf.keras.utils.serialize_keras_object(self.beta),
+            "latent_space_dims": tf.keras.utils.serialize_keras_object(self.latent_space_dims)
+        }
+        return {**base_config, **config}
+
+    @classmethod
+    def from_config(cls, config):
+        encoder_out_size = tf.keras.utils.deserialize_keras_object(config.pop('encoder_out_size'))
+        kernel_size = tf.keras.utils.deserialize_keras_object(config.pop('kernel_size'))
+        kl_beta = tf.keras.utils.deserialize_keras_object(config.pop('kl_beta'))
+        latent_space_dims = tf.keras.utils.deserialize_keras_object(config.pop('latent_space_dims'))
+
+        return cls(encoder_out_size,
+                   kernel_size,
+                   kl_beta,
+                   latent_space_dims,
+                   **config)
