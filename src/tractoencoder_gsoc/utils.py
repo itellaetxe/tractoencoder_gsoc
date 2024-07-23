@@ -61,6 +61,19 @@ def read_data(tractogram_fname: str, img_fname: str = None):
     return strml
 
 
+def compute_streamline_length(streamline):
+    # Calculate differences between consecutive points
+    diffs = np.diff(streamline, axis=0)
+
+    # Compute the Euclidean distance between consecutive points
+    distances = np.sqrt(np.sum(diffs ** 2, axis=1))
+
+    # Sum the distances to get the total length
+    total_length = np.sum(distances)
+
+    return total_length
+
+
 def prepare_tensor_from_file(tractogram_fname: str,
                              img_fname: str) -> tf.Tensor:
     strml = read_data(tractogram_fname, img_fname)
