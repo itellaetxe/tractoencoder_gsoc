@@ -403,6 +403,7 @@ class IncrFeatStridedConvFCUpsampReflectPadCondVAE(Model):
             z_mean, z_log_var, z, r_mean, r_log_var, r, pz_mean, pz_log_var = encoder_output
             reconstruction = self.decoder(z)
 
+            # Compute Losses: Reconstruction, KL Divergence, and Label Loss
             reconstruction_loss = tf.reduce_mean(tf.square(tf.subtract(input_data, reconstruction)))
 
             kl_loss = - 0.5 * (1 + z_log_var - pz_log_var - tf.divide(ops.square(z_mean - pz_mean), safe_exp(pz_log_var)) - tf.divide(safe_exp(z_log_var), safe_exp(pz_log_var)))
@@ -414,6 +415,8 @@ class IncrFeatStridedConvFCUpsampReflectPadCondVAE(Model):
 
         grads = tape.gradient(total_loss, self.trainable_weights)
         self.optimizer.apply_gradients(zip(grads, self.trainable_weights))
+
+        # Update loss trackers
         self.total_loss_tracker.update_state(total_loss)
         self.reconstruction_loss_tracker.update_state(reconstruction_loss)
         self.kl_loss_tracker.update_state(kl_loss)
@@ -427,9 +430,10 @@ class IncrFeatStridedConvFCUpsampReflectPadCondVAE(Model):
             tf.summary.scalar('KL Loss', kl_loss, step=self.optimizer.iterations)
             self.writer.flush()
         return {
-            "loss": self.total_loss_tracker.result(),
+            "total_loss": self.total_loss_tracker.result(),
             "reconstruction_loss": self.reconstruction_loss_tracker.result(),
             "kl_loss": self.kl_loss_tracker.result(),
+            "label_loss": self.label_loss_tracker.result()
         }
 
     def compile(self, **kwargs):
@@ -484,26 +488,3 @@ class IncrFeatStridedConvFCUpsampReflectPadCondVAE(Model):
         # TODO: Complete docstring
         """
         super().save(*args, **kwargs)
-
-    # def get_config(self):
-    #     base_config = super().get_config()
-    #     config = {
-    #         "encoder_out_size": tf.keras.utils.serialize_keras_object(self.encoder_out_size),
-    #         "kernel_size": tf.keras.utils.serialize_keras_object(self.kernel_size),
-    #         "kl_beta": tf.keras.utils.serialize_keras_object(self.beta),
-    #         "latent_space_dims": tf.keras.utils.serialize_keras_object(self.latent_space_dims)
-    #     }
-    #     return {**base_config, **config}
-
-    # @classmethod
-    # def from_config(self, cls, config):
-    #     encoder_out_size = tf.keras.utils.deserialize_keras_object(config.pop('encoder_out_size'))
-    #     kernel_size = tf.keras.utils.deserialize_keras_object(config.pop('kernel_size'))
-    #     kl_beta = tf.keras.utils.deserialize_keras_object(config.pop('kl_beta'))
-    #     latent_space_dims = tf.keras.utils.deserialize_keras_object(config.pop('latent_space_dims'))
-
-    #     return cls(encoder_out_size,
-    #                kernel_size,
-    #                kl_beta,
-    #                latent_space_dims,
-    #                **config)

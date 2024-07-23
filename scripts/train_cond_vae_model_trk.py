@@ -37,6 +37,9 @@ if __name__ == "__main__":
     streamline_lengths = np.array(streamline_lengths).reshape(-1, 1)
     streamline_lengths = tf.convert_to_tensor(streamline_lengths, dtype=tf.float32)
 
+    print(f"INFO: Input streamlines shape: {input_streamlines.shape}")
+    print(f"INFO: Streamline lengths shape: {streamline_lengths.shape}")
+
     # Compile the model, then fit it (train it)
     model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=args.learning_rate),
                   loss=tf.keras.losses.MeanSquaredError())
@@ -44,9 +47,9 @@ if __name__ == "__main__":
     # Define training callbacks
     # update_epoch_cb = utils.UpdateEpochCallback(model)
     tensorboard_cb = tf.keras.callbacks.TensorBoard(log_dir=args.output_dir)
-    early_stopping_monitor = tf.keras.callbacks.EarlyStopping(monitor='reconstruction_loss',
+    early_stopping_monitor = tf.keras.callbacks.EarlyStopping(monitor='total_loss',
                                                               min_delta=0,
-                                                              patience=15,
+                                                              patience=50,
                                                               verbose=0,
                                                               mode='min',
                                                               baseline=None,
