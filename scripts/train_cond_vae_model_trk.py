@@ -47,7 +47,7 @@ if __name__ == "__main__":
     # Define training callbacks
     # update_epoch_cb = utils.UpdateEpochCallback(model)
     tensorboard_cb = tf.keras.callbacks.TensorBoard(log_dir=args.output_dir)
-    early_stopping_monitor = tf.keras.callbacks.EarlyStopping(monitor='total_loss',
+    early_stopping_monitor = tf.keras.callbacks.EarlyStopping(monitor='reconstruction_loss',
                                                               min_delta=0,
                                                               patience=50,
                                                               verbose=0,
