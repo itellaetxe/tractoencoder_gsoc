@@ -34,6 +34,7 @@ if __name__ == "__main__":
                                                                 axis=0))
 
     streamline_lengths = [utils.compute_streamline_length(streamline) for streamline in input_streamlines.numpy()]
+    streamline_lengths = np.array(streamline_lengths).reshape(-1, 1)
     streamline_lengths = tf.convert_to_tensor(streamline_lengths, dtype=tf.float32)
 
     # Compile the model, then fit it (train it)

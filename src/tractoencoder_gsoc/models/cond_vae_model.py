@@ -171,8 +171,7 @@ class Encoder(Layer):
         return cls(latent_space_dims, kernel_size, **config)
 
     def call(self, input_data):
-        x = input_data[0]
-        r = input_data[1]
+        x = input_data
 
         h1 = tf.nn.relu(self.encod_conv1(x))
         h1 = self.encod_batchnorm1(h1)
@@ -331,7 +330,7 @@ def init_model(latent_space_dims=32, kernel_size=3):
     encoder = Encoder(latent_space_dims=latent_space_dims,
                       kernel_size=kernel_size)
     # this is the latent vector sampled with the reparametrization trick
-    encoder_output = encoder([input_data, input_r])
+    encoder_output = encoder(input_data)
     z_mean, z_log_var, z, r_mean, r_log_var, r = encoder_output
 
     # generate
@@ -340,7 +339,7 @@ def init_model(latent_space_dims=32, kernel_size=3):
     pz_mean, pz_log_var = generator_output
 
     # Instantiate encoder model
-    model_encoder = Model([input_data, input_r],
+    model_encoder = Model(input_data,
                           (z_mean, z_log_var, z, r_mean, r_log_var, r, pz_mean, pz_log_var),
                           name="Encoder")
 
@@ -400,7 +399,7 @@ class IncrFeatStridedConvFCUpsampReflectPadCondVAE(Model):
         with tf.GradientTape() as tape:
             input_data = data[0][0]
             input_r = data[0][1]
-            encoder_output = self.encoder([input_data, input_r], training=True)
+            encoder_output = self.encoder(input_data, training=True)
             z_mean, z_log_var, z, r_mean, r_log_var, r, pz_mean, pz_log_var = encoder_output
             reconstruction = self.decoder(z)
 
@@ -409,7 +408,7 @@ class IncrFeatStridedConvFCUpsampReflectPadCondVAE(Model):
             kl_loss = - 0.5 * (1 + z_log_var - pz_log_var - tf.divide(ops.square(z_mean - pz_mean), safe_exp(pz_log_var)) - tf.divide(safe_exp(z_log_var), safe_exp(pz_log_var)))
             kl_loss = ops.mean(ops.sum(kl_loss, axis=1))
 
-            label_loss = tf.divide(0.5 * ops.square(r_mean - input_r), safe_exp(r_log_var)) + 0.5 * r_log_var
+            label_loss = tf.reduce_mean(tf.divide(0.5 * ops.square(r_mean - input_r), safe_exp(r_log_var)) + 0.5 * r_log_var)
 
             total_loss = reconstruction_loss + self.beta * kl_loss + label_loss
 
@@ -451,7 +450,7 @@ class IncrFeatStridedConvFCUpsampReflectPadCondVAE(Model):
         # TODO: Complete docstring
         """
         x = input_data
-        z_mean, z_log_var, z = self.encoder(x)
+        z_mean, z_log_var, z, r_mean, r_log_var, r, pz_mean, pz_log_var = self.encoder(x)
         decoded = self.decoder(z)
 
         return decoded
