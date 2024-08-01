@@ -168,7 +168,8 @@ class Encoder(Layer):
     def from_config(cls, config):
         latent_space_dims = keras.saving.deserialize_keras_object(config.pop('latent_space_dims'))
         kernel_size = keras.saving.deserialize_keras_object(config.pop('kernel_size'))
-        return cls(latent_space_dims, kernel_size, **config)
+        encoder_out_size = keras.saving.deserialize_keras_object(config.pop('encoder_out_size'))
+        return cls(latent_space_dims, kernel_size, encoder_out_size, **config)
 
     def call(self, input_data):
         x = input_data
@@ -251,7 +252,8 @@ class Decoder(Layer):
         self.latent_space_dims = latent_space_dims
         self.encoder_out_size = encoder_out_size
 
-        self.fc2 = layers.Dense(8192, name="fc2")
+        fc2_input = dict_kernel_size_flatten_encoder_shape[self.kernel_size]
+        self.fc2 = layers.Dense(fc2_input, name="fc2")
         # TODO (general): Add comments to the architecture of the model
         self.decod_conv1 = pre_pad(
             layers.Conv1D(512, self.kernel_size, strides=1, padding='valid',
@@ -286,6 +288,7 @@ class Decoder(Layer):
     def get_config(self):
         base_config = super().get_config()
         config = {
+            "latent_space_dims": keras.saving.serialize_keras_object(self.latent_space_dims),
             "encoder_out_size": keras.saving.serialize_keras_object(self.encoder_out_size),
             "kernel_size": keras.saving.serialize_keras_object(self.kernel_size)
         }
@@ -293,9 +296,10 @@ class Decoder(Layer):
 
     @classmethod
     def from_config(cls, config):
+        latent_space_dims = keras.saving.deserialize_keras_object(config.pop('latent_space_dims'))
         encoder_out_size = keras.saving.deserialize_keras_object(config.pop('encoder_out_size'))
         kernel_size = keras.saving.deserialize_keras_object(config.pop('kernel_size'))
-        return cls(encoder_out_size, kernel_size, **config)
+        return cls(encoder_out_size, kernel_size, latent_space_dims, **config)
 
     def call(self, input_data):
         # z: latent vector sampled from z_mean and z_log_var using the
@@ -395,6 +399,22 @@ class IncrFeatStridedConvFCUpsampReflectPadCondVAE(Model):
                 self.kl_loss_tracker,
                 self.label_loss_tracker]
 
+    def get_config(self):
+        base_config = super().get_config()
+        config = {
+            "latent_space_dims": keras.saving.serialize_keras_object(self.latent_space_dims),
+            "kernel_size": keras.saving.serialize_keras_object(self.kernel_size),
+            "beta": keras.saving.serialize_keras_object(self.beta),
+        }
+        return {**base_config, **config}
+
+    @classmethod
+    def from_config(cls, config):
+        latent_space_dims = keras.saving.deserialize_keras_object(config.pop('latent_space_dims'))
+        kernel_size = keras.saving.deserialize_keras_object(config.pop('kernel_size'))
+        beta = keras.saving.deserialize_keras_object(config.pop('beta'))
+        return cls(latent_space_dims, kernel_size, beta, **config)
+
     def train_step(self, data):
         with tf.GradientTape() as tape:
             input_data = data[0][0]
@@ -481,10 +501,12 @@ class IncrFeatStridedConvFCUpsampReflectPadCondVAE(Model):
         """_summary_
         # TODO: Complete docstring
         """
-        super().save_weights(*args, **kwargs)
+        super(IncrFeatStridedConvFCUpsampReflectPadCondVAE, self).save_weights(*args,
+                                                                               **kwargs)
 
     def save(self, *args, **kwargs):
         """_summary_
         # TODO: Complete docstring
         """
-        super().save(*args, **kwargs)
+        super(IncrFeatStridedConvFCUpsampReflectPadCondVAE, self).save(*args,
+                                                                       **kwargs)
