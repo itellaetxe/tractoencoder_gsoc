@@ -45,11 +45,10 @@ if __name__ == "__main__":
                   loss=tf.keras.losses.MeanSquaredError())
 
     # Define training callbacks
-    # update_epoch_cb = utils.UpdateEpochCallback(model)
     tensorboard_cb = tf.keras.callbacks.TensorBoard(log_dir=args.output_dir)
-    early_stopping_monitor = tf.keras.callbacks.EarlyStopping(monitor='reconstruction_loss',
+    early_stopping_monitor = tf.keras.callbacks.EarlyStopping(monitor='total_loss',
                                                               min_delta=0,
-                                                              patience=50,
+                                                              patience=args.epochs,
                                                               verbose=0,
                                                               mode='min',
                                                               baseline=None,
@@ -61,13 +60,13 @@ if __name__ == "__main__":
                               batch_size=args.batch_size,
                               callbacks=[tensorboard_cb, early_stopping_monitor])
 
+    # Run the input data through the model, convert it to a np.array
+    y = model(input_streamlines).numpy()
+
     # Save the model
     model_fname = os.path.join(args.output_dir, "model.weights.h5")
     model.save_weights(model_fname)
     model.save(os.path.join(args.output_dir, "model_final.keras"))
-
-    # Run the input data through the model, convert it to a np.array
-    y = model(input_streamlines).numpy()
 
     # Save the tractogram
     output_trk_fname = os.path.join(args.output_dir, "output.trk")
@@ -78,7 +77,8 @@ if __name__ == "__main__":
 
     # Write the model specs to a file for future reference
     spec_file = os.path.join(args.output_dir, "model_specs.txt")
-    utils.write_model_specs(spec_file=spec_file, model=model, arguments=args)
+    utils.write_model_specs(spec_file=spec_file, model=model, arguments=args,
+                            train_history=train_history)
 
     # Save a screenshot of the input and the output using dipy_horizon
     input_screenshot_fname = os.path.join(args.output_dir, "input_view.png")
