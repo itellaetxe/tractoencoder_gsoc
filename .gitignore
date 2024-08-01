@@ -1,3 +1,7 @@
+# TF logs
+logs/
+notebooks/logs/
+
 # Data
 data/
 
