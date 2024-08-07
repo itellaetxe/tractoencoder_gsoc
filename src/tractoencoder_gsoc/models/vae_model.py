@@ -5,7 +5,7 @@ import numpy as np
 import nibabel as nib
 import tensorflow as tf
 import tensorflow.keras.ops as ops
-from tensorflow import keras
+import keras
 from tensorflow.keras import layers, Layer, Model, initializers
 
 from tractoencoder_gsoc.utils import pre_pad
@@ -137,7 +137,8 @@ class Encoder(Layer):
         base_config = super().get_config()
         config = {
             "latent_space_dims": keras.saving.serialize_keras_object(self.latent_space_dims),
-            "kernel_size": keras.saving.serialize_keras_object(self.kernel_size)
+            "kernel_size": keras.saving.serialize_keras_object(self.kernel_size),
+            "encoder_out_size": keras.saving.serialize_keras_object(self.encoder_out_size)
         }
         return {**base_config, **config}
 
@@ -401,25 +402,25 @@ class IncrFeatStridedConvFCUpsampReflectPadVAE(Model):
         """
         super().save(*args, **kwargs)
 
-    def get_config(self):
-        base_config = super().get_config()
-        config = {
-            "encoder_out_size": tf.keras.utils.serialize_keras_object(self.encoder_out_size),
-            "kernel_size": tf.keras.utils.serialize_keras_object(self.kernel_size),
-            "kl_beta": tf.keras.utils.serialize_keras_object(self.beta),
-            "latent_space_dims": tf.keras.utils.serialize_keras_object(self.latent_space_dims)
-        }
-        return {**base_config, **config}
+    # def get_config(self):
+    #     base_config = super().get_config()
+    #     config = {
+    #         "encoder_out_size": tf.keras.utils.serialize_keras_object(self.encoder_out_size),
+    #         "kernel_size": tf.keras.utils.serialize_keras_object(self.kernel_size),
+    #         "kl_beta": tf.keras.utils.serialize_keras_object(self.beta),
+    #         "latent_space_dims": tf.keras.utils.serialize_keras_object(self.latent_space_dims)
+    #     }
+    #     return {**base_config, **config}
 
-    @classmethod
-    def from_config(cls, config):
-        encoder_out_size = tf.keras.utils.deserialize_keras_object(config.pop('encoder_out_size'))
-        kernel_size = tf.keras.utils.deserialize_keras_object(config.pop('kernel_size'))
-        kl_beta = tf.keras.utils.deserialize_keras_object(config.pop('kl_beta'))
-        latent_space_dims = tf.keras.utils.deserialize_keras_object(config.pop('latent_space_dims'))
+    # @classmethod
+    # def from_config(self, cls, config):
+    #     encoder_out_size = tf.keras.utils.deserialize_keras_object(config.pop('encoder_out_size'))
+    #     kernel_size = tf.keras.utils.deserialize_keras_object(config.pop('kernel_size'))
+    #     kl_beta = tf.keras.utils.deserialize_keras_object(config.pop('kl_beta'))
+    #     latent_space_dims = tf.keras.utils.deserialize_keras_object(config.pop('latent_space_dims'))
 
-        return cls(encoder_out_size,
-                   kernel_size,
-                   kl_beta,
-                   latent_space_dims,
-                   **config)
+    #     return cls(encoder_out_size,
+    #                kernel_size,
+    #                kl_beta,
+    #                latent_space_dims,
+    #                **config)
