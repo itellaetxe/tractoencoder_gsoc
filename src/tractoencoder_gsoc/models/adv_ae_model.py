@@ -15,17 +15,18 @@ class Discriminator(Layer):
         super(Discriminator, self).__init__(**kwargs)
         self.kernel_size = kernel_size
 
-        self.dense0 = layers.Dense(8192, activation=None)
-        self.fc0 = layers.Conv1D(64, self.kernel_size, strides=1,
-                                 padding='valid', activation=None)
+        self.conv0 = layers.Conv1D(64, self.kernel_size, strides=1,
+                                   padding='same', activation=None)
         self.do0 = layers.Dropout(0.3)
 
-        self.fc1 = layers.Conv1D(128, self.kernel_size, strides=1,
-                                 padding='valid', activation=None)
+        self.conv1 = layers.Conv1D(128, self.kernel_size, strides=1,
+                                   padding='same', activation=None)
         self.do1 = layers.Dropout(0.3)
 
         self.flatten = layers.Flatten()
-        self.dense = layers.Dense(1)
+        self.dense0 = layers.Dense(128)
+        self.prediction_logits = layers.Dense(1)
+        self.prediction = tf.math.sigmoid
 
     def get_config(self):
         base_config = super().get_config()
@@ -40,19 +41,21 @@ class Discriminator(Layer):
         return cls(kernel_size, **config)
 
     def call(self, input_data):
-        x = input_data
-        x = self.fc0(x)
+        x = tf.expand_dims(input_data, axis=-1)
+        x = self.conv0(x)
         x = layers.LeakyReLU()(x)
         x = self.do0(x)
 
-        x = self.fc1(x)
+        x = self.conv1(x)
         x = layers.LeakyReLU()(x)
         x = self.do1(x)
 
         x = self.flatten(x)
-        decision = self.dense(x)
+        x = self.dense0(x)
+        prediction_logits = self.prediction_logits(x)
+        prediction = self.prediction(prediction_logits)
 
-        return decision
+        return prediction
 
 
 def init_model(latent_space_dims=32, kernel_size=3):
