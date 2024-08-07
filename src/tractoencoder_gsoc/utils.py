@@ -9,17 +9,28 @@ import nibabel as nib
 import h5py
 
 from dipy.io.stateful_tractogram import Space
+from dipy.io.utils import (get_reference_info,
+                           is_header_compatible,
+                           create_nifti_header)
 from dipy.io.streamline import load_tractogram
 from dipy.tracking.streamline import Streamlines  # same as nibabel.streamlines.ArraySequence
 
 from keras import Layer, Sequential
-
 
 dict_kernel_size_flatten_encoder_shape = {1: 12288,
                                           2: 10240,
                                           3: 8192,
                                           4: 7168,
                                           5: 5120}
+
+
+def safe_exp(x):
+    # Safe exp operation to prevent exp from producing inf values
+    return tf.clip_by_value(tf.exp(x), -1e10, 1e10)
+
+
+def cross_entropy():
+    return tf.nn.sigmoid_cross_entropy_with_logits(from_logits=True)
 
 
 class ReflectionPadding1D(Layer):
@@ -36,7 +47,9 @@ def pre_pad(layer: Layer):
     return Sequential([ReflectionPadding1D(padding=1), layer])
 
 
-def read_data(tractogram_fname: str, img_fname: str = None):
+def read_data(tractogram_fname: str, img_fname: str = None,
+              trk_header_check: bool = False,
+              bbox_valid_check: bool = False):
     # Load the anatomical data
     if img_fname is None:
         img_header = nib.Nifti1Header()
@@ -47,8 +60,6 @@ def read_data(tractogram_fname: str, img_fname: str = None):
     # Load tractography data (assumes everything is resampled to 256 points)
     # from a TRK file
     to_space = Space.RASMM
-    trk_header_check = True
-    bbox_valid_check = True
     tractogram = load_tractogram(
         tractogram_fname,
         img_header,
@@ -92,18 +103,21 @@ def prepare_tensor_from_file(tractogram_fname: str,
 def save_tractogram(streamlines: np.array,
                     tractogram_fname: str,
                     img_fname: str = None) -> None:
+
     # Load the anatomical data
     if img_fname is not None:
         img = nib.load(img_fname)
         img_header = img.header
+        affine = img_header.get_base_affine()
     else:
         img_header = nib.streamlines.trk.TrkFile.create_empty_header()
 
     # Save tractography data
     tractogram = nib.streamlines.Tractogram(streamlines=streamlines,
-                                            affine_to_rasmm=np.eye(4))
-    trkfile = nib.streamlines.TrkFile(tractogram, img_header)
-    nib.streamlines.save(tractogram=trkfile,
+                                            affine_to_rasmm=affine)
+    trk_file = nib.streamlines.TrkFile(tractogram=tractogram,
+                                       header=img_header)
+    nib.streamlines.save(tractogram=trk_file,
                          filename=tractogram_fname)
 
     return None

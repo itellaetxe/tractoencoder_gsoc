@@ -8,16 +8,12 @@ import tensorflow.keras.ops as ops
 import keras
 from tensorflow.keras import layers, Layer, Model, initializers
 
-from tractoencoder_gsoc.utils import pre_pad
+from tractoencoder_gsoc.utils import pre_pad, safe_exp
 from tractoencoder_gsoc.utils import dict_kernel_size_flatten_encoder_shape
-
 
 # TODO (general): Add typing suggestions to methods where needed/advised/possible
 # TODO (general): Add docstrings to all functions and mthods
 
-def safe_exp(x):
-    # Safe exp operation to prevent exp from producing inf values
-    return tf.clip_by_value(tf.exp(x), -1e10, 1e10)
 
 class ReparametrizationTrickSampling(layers.Layer):
     """Uses (z_mean, z_log_var) to sample z, the vector encoding a digit."""
