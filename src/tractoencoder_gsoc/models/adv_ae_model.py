@@ -55,7 +55,7 @@ class Discriminator(Layer):
         prediction_logits = self.prediction_logits(x)
         prediction = self.prediction(prediction_logits)
 
-        return prediction
+        return prediction, prediction_logits
 
 
 def init_model(latent_space_dims=32, kernel_size=3):
@@ -133,50 +133,58 @@ class JH_Adv_AE(Model):
         return cls(kernel_size, latent_space_dims,
                    encoder_out_size, **config)
 
-    def train_step(self, data):
+    @tf.function
+    def train_step(self, data, y_labels, optimizers_dict,
+                   label_sample, real_dist, n_classes):
         # Unpack data
-        input_data = data[0][0]
-        # bundle_class = data[0][1]
-        # attribute_data = data[0][2]
+        x_batch = data
 
         # AE Gradient Tape
         with tf.GradientTape() as ae_tape:
             # Run the inputs through the AE (Encode->Decode)
-            reconstruction = self.decoder(self.encoder(input_data),
+            reconstruction = self.decoder(self.encoder(x_batch),
                                           training=True)
             # Compute Reconstruction Loss
-            reconstruction_loss = tf.reduce_mean(tf.square(tf.subtract(input_data, reconstruction)))
-
-        # Compute the gradients
+            reconstruction_loss = tf.reduce_mean(tf.math.squared_difference(x_batch, reconstruction))
+        # Compute the gradients of the AE
         ae_trainable_variables = self.encoder.trainable_variables + self.decoder.trainable_variables
         ae_grads = ae_tape.gradient(reconstruction_loss, ae_trainable_variables)
-        self.ae_optimizer.apply_gradients(zip(ae_grads, ae_trainable_variables))
+        optimizers_dict['ae'].apply_gradients(zip(ae_grads, ae_trainable_variables))
 
-        # Adversarial (Generator & Discriminator) Gradient Tapes
-        with tf.GradientTape() as d_tape, tf.GradientTape() as g_tape:
-            input_data = data[0][0]
+        # Discriminator
+        with tf.GradientTape() as d_tape:
+            label_sample_one_hot = tf.one_hot(label_sample, n_classes)
+            real_dist_label = tf.concat([real_dist, label_sample_one_hot], axis=1)
             # Run the input through the encoder
-            z_fake = self.encoder(input_data, training=True)
-            # Sample a latent vector from the prior
-            z_real = tf.random.normal([input_data.shape[0], self.latent_space_dims],
-                                      mean=0.0, stddev=1.0)
-            # Run the latent vectors through the discriminator
-            fake_output = self.discriminator(z_fake, training=True)
-            real_output = self.discriminator(z_real, training=True)
+            fake_dist = self.encoder(x_batch, training=True)
+            fake_dist_label = tf.concat([fake_dist, y_labels], axis=1)
 
+            # Run the latent vectors through the discriminator
+            _, real_logits = self.discriminator(real_dist_label, training=True)
+            _, fake_logits = self.discriminator(fake_dist_label, training=True)
             # Discriminator loss
-            D_real = tf.reduce_mean(cross_entropy(tf.ones_like(real_output), real_output))
-            D_fake = tf.reduce_mean(cross_entropy(tf.zeros_like(fake_output), fake_output))
-            D_loss = D_real + D_fake
-            # Generator Loss
-            G_loss = tf.reduce_mean(cross_entropy(tf.ones_like(fake_output), fake_output))
+            loss_real = tf.nn.sigmoid_cross_entropy_with_logits(
+                labels=tf.ones_like(real_logits), logits=real_logits)
+            loss_fake = tf.nn.sigmoid_cross_entropy_with_logits(
+                labels=tf.zeros_like(fake_logits), logits=fake_logits)
+            D_loss = tf.reduce_mean(loss_real + loss_fake)
 
         # Compute the gradients of discriminator
         d_grads = d_tape.gradient(D_loss, self.discriminator.trainable_variables)
-        self.d_optimizer.apply_gradients(zip(d_grads, self.discriminator.trainable_variables))
+        optimizers_dict['discriminator'].apply_gradients(zip(d_grads,
+                                                             self.discriminator.trainable_variables))
+
+        with tf.GradientTape() as g_tape:
+            encoder_output = self.encoder(x_batch, training=True)
+            encoder_output_label = tf.concat([encoder_output, y_labels], axis=1)
+            _, disc_fake_logits = self.discriminator(encoder_output_label, training=True)
+            # Generator Loss
+            G_loss = tf.reduce_mean(
+                tf.nn.sigmoid_cross_entropy_with_logits(
+                    labels=tf.ones_like(disc_fake_logits), logits=disc_fake_logits))
         # Compute the gradients of generator
         g_grads = g_tape.gradient(G_loss, self.encoder.trainable_variables)
-        self.g_optimizer.apply_gradients(zip(g_grads, self.encoder.trainable_variables))
+        optimizers_dict['encoder'].apply_gradients(zip(g_grads, self.encoder.trainable_variables))
 
         total_loss = reconstruction_loss + G_loss + D_loss
 

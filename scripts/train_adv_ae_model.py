@@ -9,6 +9,10 @@ import tensorflow as tf
 from tractoencoder_gsoc import utils as utils
 from tractoencoder_gsoc.models import adv_ae_model
 
+# Code partially inspired from:
+# https://github.com/elsanns/adversarial-autoencoder-tf2
+# (Very nice and neat implementation)
+
 
 if __name__ == "__main__":
 
@@ -33,17 +37,15 @@ if __name__ == "__main__":
         input_streamlines = tf.convert_to_tensor(np.concatenate(input_streamlines,
                                                                 axis=0))
 
-    streamline_lengths = [utils.compute_streamline_length(streamline) for streamline in input_streamlines.numpy()]
-    streamline_lengths = np.array(streamline_lengths).reshape(-1, 1)
-    streamline_lengths = tf.convert_to_tensor(streamline_lengths, dtype=tf.float32)
-
+    streamline_lengths = utils.get_streamline_lengths(input_streamlines)
     print(f"INFO: Input streamlines shape: {input_streamlines.shape}")
     print(f"INFO: Streamline lengths shape: {streamline_lengths.shape}")
 
     # Compile the model, then fit it (train it)
-    optimizers = [tf.keras.optimizers.Adam(learning_rate=args.learning_rate),
-                  tf.keras.optimizers.Adam(learning_rate=args.learning_rate),
-                  tf.keras.optimizers.Adam(learning_rate=args.learning_rate)]
+    optimizers_dict = {"ae": tf.keras.optimizers.Adam(learning_rate=args.learning_rate),
+                       "encoder": tf.keras.optimizers.Adam(learning_rate=args.learning_rate),
+                       "discriminator": tf.keras.optimizers.Adam(learning_rate=args.learning_rate)}
+
     model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=args.learning_rate),
                   loss=tf.keras.losses.MeanSquaredError())
 
