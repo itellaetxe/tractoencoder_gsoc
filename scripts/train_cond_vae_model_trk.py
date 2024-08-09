@@ -33,9 +33,9 @@ if __name__ == "__main__":
         input_streamlines = tf.convert_to_tensor(np.concatenate(input_streamlines,
                                                                 axis=0))
 
-    streamline_lengths = [utils.compute_streamline_length(streamline) for streamline in input_streamlines.numpy()]
-    streamline_lengths = np.array(streamline_lengths).reshape(-1, 1)
-    streamline_lengths = tf.convert_to_tensor(streamline_lengths, dtype=tf.float32)
+    streamline_lengths = utils.get_streamline_lengths(input_streamlines)
+    # Z-score streamline lengths
+    streamline_lengths = (streamline_lengths - np.mean(streamline_lengths)) / np.std(streamline_lengths)
 
     print(f"INFO: Input streamlines shape: {input_streamlines.shape}")
     print(f"INFO: Streamline lengths shape: {streamline_lengths.shape}")

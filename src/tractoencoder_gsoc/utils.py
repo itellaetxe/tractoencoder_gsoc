@@ -48,8 +48,8 @@ def pre_pad(layer: Layer):
 
 
 def read_data(tractogram_fname: str, img_fname: str = None,
-              trk_header_check: bool = False,
-              bbox_valid_check: bool = False):
+              trk_header_check: bool = True,
+              bbox_valid_check: bool = True):
     # Load the anatomical data
     if img_fname is None:
         img_header = nib.Nifti1Header()
@@ -83,6 +83,15 @@ def compute_streamline_length(streamline):
     total_length = np.sum(distances)
 
     return total_length
+
+
+def get_streamline_lengths(input_streamlines) -> tf.Tensor:
+    # Get a tf.Tensor holding the streamline lengths ready to put it into the model
+    streamline_lengths = [compute_streamline_length(streamline) for streamline in input_streamlines.numpy()]
+    streamline_lengths = np.array(streamline_lengths).reshape(-1, 1)
+    streamline_lengths = tf.convert_to_tensor(streamline_lengths, dtype=tf.float32)
+
+    return streamline_lengths
 
 
 def prepare_tensor_from_file(tractogram_fname: str,
