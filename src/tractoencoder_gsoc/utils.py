@@ -190,47 +190,6 @@ def write_model_specs(spec_file: str, model, arguments,
     return None
 
 
-def load_h5_dataset(h5_fname: str, dataset_name: str = None) -> np.array:
-    with h5py.File(h5_fname, "r") as f:
-        data = f[dataset_name][()]
-
-    return data
-
-
-def process_arguments_hdf5() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Train the autoencoder model using HDF5 datasets.")
-    parser.add_argument("--input_dataset", type=str, help="Path to the input HDF5 file (.h5 file)")
-    parser.add_argument("--input_anat", type=str, help="Path to the input anatomical image (NIfTI file)")
-    parser.add_argument("--output_dir", type=str, help="Path to the output directory where results will be saved")
-    parser.add_argument("--batch_size", type=int, default=20, help="Batch size for training the model")
-    parser.add_argument("--epochs", type=int, default=10, help="Number of epochs for training the model")
-    parser.add_argument("--latent_space_dims", type=int, default=32, help="Number of dimensions in the latent space")
-    parser.add_argument("--kernel_size", type=int, default=3, help="Size of the kernel for the convolutional layers")
-    parser.add_argument("--learning_rate", type=float, default=0.00068, help="Learning rate for the optimizer")
-    parser.add_argument("--seed", type=int, default=2208, help="Seed for reproducibility")
-    args = parser.parse_args()
-
-    # Sanity check of CLI arguments
-    if not os.path.exists(args.input_dataset):
-        raise FileNotFoundError(f"Input dataset not found at {args.input_dataset}")
-    if not os.path.exists(args.input_anat):
-        raise FileNotFoundError(f"Input anatomical image not found at {args.input_anat}")
-
-    if os.path.exists(args.output_dir):
-        # If the output directory exists and it is NOT empty, raise Error because we do not want to overwrite
-        if len(os.listdir(args.output_dir)) != 0:
-            raise FileExistsError(f"Output directory {args.output_dir} is not empty. Please provide an empty directory")
-        else:
-            print(f"WARNING: Empty output directory found at {args.output_dir}")
-    # If the output directory does not exist, create it:
-    else:
-        os.makedirs(args.output_dir)
-
-    print(f"INFO: Your results will be stored at {args.output_dir}")
-
-    return args
-
-
 def process_arguments_trk() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train the autoencoder model")
     parser.add_argument("--input_trk", nargs='+', type=str, help="Path(s) to the input tractogram(s) (.trk)")
@@ -243,13 +202,22 @@ def process_arguments_trk() -> argparse.Namespace:
     parser.add_argument("--learning_rate", type=float, default=0.00068, help="Learning rate for the optimizer")
     parser.add_argument("--seed", type=int, default=2208, help="Seed for reproducibility")
     parser.add_argument("--beta", type=float, default=1.0, help="Beta parameter for the KL divergence loss")
+    parser.add_argument("--log_dir", type=str, default="logs",
+                        help="Log directory (Tensorboard)")
+    parser.add_argument("--gm_x_stddev", type=float, default=0.5,
+                        help="Gaussian mixture prior: standard deviation for the x coord")
+    parser.add_argument("--gm_y_stddev", type=float, default=0.1,
+                        help="Gaussian mixture prior shape: standard deviation for the y coord")
+    parser.add_argument("--prior_type", type=str, default="gaussian_mixture",
+                        choices=["gaussian_mixture", "swiss_roll"],
+                        help="Type of target prior distribution")
     args = parser.parse_args()
 
     # Sanity check of CLI arguments
     for trk_path in args.input_trk:
         if not os.path.exists(trk_path):
             raise FileNotFoundError(f"Input dataset not found at {trk_path}")
-    if not os.path.exists(args.input_anat):
+    if hasattr(args, "input_anat") and not os.path.exists(args.input_anat):
         raise FileNotFoundError(f"Input anatomical image not found at {args.input_anat}")
 
     if os.path.exists(args.output_dir):
@@ -265,13 +233,3 @@ def process_arguments_trk() -> argparse.Namespace:
     print(f"INFO: Your results will be stored at {args.output_dir}")
 
     return args
-
-
-class UpdateEpochCallback(tf.keras.callbacks.Callback):
-    def __init__(self, model):
-        super(UpdateEpochCallback, self).__init__()
-        self.model = model
-
-    def on_epoch_begin(self, epoch, logs=None):
-        # Update the model's current_epoch property at the start of each epoch
-        self.model.current_epoch.assign(epoch)

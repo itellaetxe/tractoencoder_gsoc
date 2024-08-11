@@ -37,7 +37,6 @@ if __name__ == "__main__":
                   loss=tf.keras.losses.MeanSquaredError())
 
     # Define training callbacks
-    # update_epoch_cb = utils.UpdateEpochCallback(model)
     tensorboard_cb = tf.keras.callbacks.TensorBoard(log_dir=args.output_dir)
     early_stopping_monitor = tf.keras.callbacks.EarlyStopping(monitor='reconstruction_loss',
                                                               min_delta=0,
