@@ -16,30 +16,30 @@ class PriorFactory:
         self.gaussian_mixture_x_stddev = gm_x_stddev
         self.gaussian_mixture_y_stddev = gm_y_stddev
 
-    def gaussian_mixture(self, batch_size, labels, n_classes):
+    def gaussian_mixture(self, batch_size, labels, n_classes, dims):
         x_stddev = self.gaussian_mixture_x_stddev
         y_stddev = self.gaussian_mixture_y_stddev
         shift = 3 * x_stddev
 
-        x = np.random.normal(0, x_stddev, batch_size).astype("float32") + shift
-        y = np.random.normal(0, y_stddev, batch_size).astype("float32")
-        z = np.array([[xx, yy] for xx, yy in zip(x, y)])
+        # Generate the initial Gaussian distributed samples
+        z = np.random.normal(0, [x_stddev] + [y_stddev] * (dims - 1), (batch_size, dims)).astype("float32")
+        z[:, 0] += shift  # Shift only the first dimension
 
         def rotate(z, label):
             angle = label * 2.0 * np.pi / n_classes
-            rotation_matrix = np.array(
-                [[cos(angle), -sin(angle)], [sin(angle), cos(angle)]]
-            )
-            z[np.where(labels == label)] = np.array(
-                [
-                    rotation_matrix.dot(np.array(point))
-                    for point in z[np.where(labels == label)]
-                ]
-            )
+            rotation_matrix = np.eye(dims)
+            # Apply rotation in the first 2 dimensions only
+            rotation_matrix[0, 0] = cos(angle)
+            rotation_matrix[0, 1] = -sin(angle)
+            rotation_matrix[1, 0] = sin(angle)
+            rotation_matrix[1, 1] = cos(angle)
+
+            z[np.where(labels == label)] = np.dot(z[np.where(labels == label)], rotation_matrix)
             return z
 
+        # Apply rotation for each class label
         for label in set(labels):
-            rotate(z, label)
+            z = rotate(z, label)
 
         return z
 

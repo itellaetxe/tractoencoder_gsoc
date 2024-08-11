@@ -65,7 +65,7 @@ class Discriminator(Layer):
         return prediction, prediction_logits
 
 
-def init_model(latent_space_dims=32, kernel_size=3):
+def init_model(latent_space_dims=32, kernel_size=3, n_classes=7):
     input_data = keras.Input(shape=(256, 3), name='input_streamlines')
 
     # encoder
@@ -82,7 +82,7 @@ def init_model(latent_space_dims=32, kernel_size=3):
 
     # discriminator
     discriminator = Discriminator(kernel_size=kernel_size)
-    discriminator_input = layers.Input(shape=(latent_space_dims + 1,),
+    discriminator_input = layers.Input(shape=(latent_space_dims + n_classes,),
                                        name='discriminator_input')
     decision = discriminator(discriminator_input)
     discriminator_model = Model(discriminator_input, decision)
@@ -92,13 +92,16 @@ def init_model(latent_space_dims=32, kernel_size=3):
 
 class JH_Adv_AE(Model):
     def __init__(self, latent_space_dims=32,
-                 kernel_size=3, **kwargs):
+                 kernel_size=3,
+                 n_classes=7,
+                 **kwargs):
         super(JH_Adv_AE, self).__init__(**kwargs)
 
         # Parameter Initialization
         self.latent_space_dims = latent_space_dims
         self.kernel_size = kernel_size
         self.encoder_out_size = dict_kernel_size_flatten_encoder_shape[kernel_size]
+        self.n_classes = n_classes
 
         self.encoder, self.decoder, self.discriminator = init_model(latent_space_dims=self.latent_space_dims,
                                                                     kernel_size=self.kernel_size)

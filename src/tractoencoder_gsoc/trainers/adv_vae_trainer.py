@@ -30,17 +30,17 @@ def train_step(model, data, y_labels, optimizers_dict,
 
     # Discriminator
     with tf.GradientTape() as d_tape:
+        # One hot encode the sampled labels
         label_sample_one_hot = tf.one_hot(label_sample, n_classes)
         real_dist_label = tf.concat([real_dist, label_sample_one_hot], axis=1)
-        # Run the input through the encoder
-        fake_dist = model.encoder(x_batch, training=True)
-        try:
-            fake_dist_label = tf.concat([fake_dist, y_labels], axis=1)
-        except tf.errors.InvalidArgumentError:
-            y_labels = tf.expand_dims(y_labels, axis=1)
-            fake_dist_label = tf.concat([fake_dist, y_labels], axis=1)
 
-        # Run the latent vectors through the discriminator
+        # Run the training data through the encoder to get the 'fake' latent vectors
+        fake_dist = model.encoder(x_batch, training=True)
+        # One hot encode the true labels
+        label_fake_one_hot = tf.one_hot(y_labels.numpy(), n_classes)
+        fake_dist_label = tf.concat([fake_dist, label_fake_one_hot], axis=1)
+
+        # Run the latent vectors through the discriminator, 'fake' and 'real'
         _, real_logits = model.discriminator(real_dist_label, training=True)
         _, fake_logits = model.discriminator(fake_dist_label, training=True)
         # Discriminator loss
@@ -57,7 +57,8 @@ def train_step(model, data, y_labels, optimizers_dict,
 
     with tf.GradientTape() as g_tape:
         encoder_output = model.encoder(x_batch, training=True)
-        encoder_output_label = tf.concat([encoder_output, y_labels], axis=1)
+        one_hot_labels = tf.one_hot(y_labels.numpy(), n_classes)
+        encoder_output_label = tf.concat([encoder_output, one_hot_labels], axis=1)
         _, disc_fake_logits = model.discriminator(encoder_output_label, training=True)
         # Generator Loss
         G_loss = tf.reduce_mean(
@@ -68,12 +69,6 @@ def train_step(model, data, y_labels, optimizers_dict,
     optimizers_dict['encoder'].apply_gradients(zip(g_grads, model.encoder.trainable_variables))
 
     total_loss = reconstruction_loss + G_loss + D_loss
-
-    # Update loss trackers
-    model.total_loss_tracker.update_state(total_loss)
-    model.reconstruction_loss_tracker.update_state(reconstruction_loss)
-    model.D_loss_tracker.update_state(D_loss)
-    model.G_loss_tracker.update_state(G_loss)
 
     return reconstruction_loss, D_loss, G_loss
 
@@ -164,7 +159,8 @@ def train_model(args):
 
     # Model
     adv_vae = adv_ae_model.JH_Adv_AE(latent_space_dims=args.latent_space_dims,
-                                     kernel_size=args.kernel_size)
+                                     kernel_size=args.kernel_size,
+                                     n_classes=data_loader.n_classes)
     prior_factory = PriorFactory(data_loader.n_classes)
     # Optimizers
     optimizers_dict = {
