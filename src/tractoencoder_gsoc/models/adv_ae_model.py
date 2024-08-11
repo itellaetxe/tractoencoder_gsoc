@@ -4,29 +4,35 @@ import numpy as np
 import nibabel as nib
 import tensorflow as tf
 import keras
-from keras import layers, Sequential, Layer, Model, initializers
+from keras import layers, Layer, Model
 
 from tractoencoder_gsoc.utils import pre_pad, cross_entropy
 from tractoencoder_gsoc.utils import dict_kernel_size_flatten_encoder_shape
 from tractoencoder_gsoc.models import ae_model
+from tractoencoder_gsoc.data_loader import DataLoader
+from tractoencoder_gsoc.prior import PriorFactory
 
 class Discriminator(Layer):
     def __init__(self, kernel_size, **kwargs):
         super(Discriminator, self).__init__(**kwargs)
         self.kernel_size = kernel_size
 
+        self.dense0 = layers.Dense(128, name="discriminator_dense0")
         self.conv0 = layers.Conv1D(64, self.kernel_size, strides=1,
-                                   padding='same', activation=None)
-        self.do0 = layers.Dropout(0.3)
+                                   padding='same', activation=None,
+                                   name="discriminator_conv0")
+        self.do0 = layers.Dropout(0.3, name="discriminator_dropout0")
 
-        self.conv1 = layers.Conv1D(128, self.kernel_size, strides=1,
-                                   padding='same', activation=None)
-        self.do1 = layers.Dropout(0.3)
+        self.conv1 = layers.Conv1D(32, self.kernel_size, strides=1,
+                                   padding='same', activation=None,
+                                   name="discriminator_conv1")
+        self.do1 = layers.Dropout(0.3, name="discriminator_dropout1")
 
-        self.flatten = layers.Flatten()
-        self.dense0 = layers.Dense(128)
-        self.prediction_logits = layers.Dense(1)
+        self.flatten = layers.Flatten(name="discriminator_flatten")
+        self.dense1 = layers.Dense(16, name="discriminator_dense1")
+        self.prediction_logits = layers.Dense(1, name="discriminator_prediction_logits")
         self.prediction = tf.math.sigmoid
+        self.name = "Discriminator"
 
     def get_config(self):
         base_config = super().get_config()
@@ -42,6 +48,7 @@ class Discriminator(Layer):
 
     def call(self, input_data):
         x = tf.expand_dims(input_data, axis=-1)
+        x = self.dense0(x)
         x = self.conv0(x)
         x = layers.LeakyReLU()(x)
         x = self.do0(x)
@@ -51,7 +58,7 @@ class Discriminator(Layer):
         x = self.do1(x)
 
         x = self.flatten(x)
-        x = self.dense0(x)
+        x = self.dense1(x)
         prediction_logits = self.prediction_logits(x)
         prediction = self.prediction(prediction_logits)
 
@@ -75,8 +82,10 @@ def init_model(latent_space_dims=32, kernel_size=3):
 
     # discriminator
     discriminator = Discriminator(kernel_size=kernel_size)
-    decision = discriminator(encoded)
-    discriminator_model = Model(encoded, decision)
+    discriminator_input = layers.Input(shape=(latent_space_dims + 1,),
+                                       name='discriminator_input')
+    decision = discriminator(discriminator_input)
+    discriminator_model = Model(discriminator_input, decision)
 
     return encoder_model, decoder_model, discriminator_model
 
@@ -96,26 +105,6 @@ class JH_Adv_AE(Model):
 
         self.name = "JH_Adv_AE"
 
-        # Metrics
-        self.total_loss_tracker = tf.keras.metrics.Mean(name="total_loss")
-        self.reconstruction_loss_tracker = tf.keras.metrics.Mean(
-            name="reconstruction_loss"
-        )
-        self.G_loss_tracker = tf.keras.metrics.Mean(name="G_loss")
-        self.D_loss_tracker = tf.keras.metrics.Mean(name="D_loss")
-        self.att_reg_loss_tracker = tf.keras.metrics.Mean(name="att_reg_loss")
-
-        # Instantiate TensorBoard writer
-        self.writer = tf.summary.create_file_writer("./logs")
-
-    @property
-    def metrics(self):
-        return [self.total_loss_tracker,
-                self.reconstruction_loss_tracker,
-                self.G_loss_tracker,
-                self.D_loss_tracker,
-                self.att_reg_loss_tracker]
-
     def get_config(self):
         base_config = super(JH_Adv_AE).get_config()
         config = {
@@ -132,80 +121,6 @@ class JH_Adv_AE(Model):
         encoder_out_size = keras.saving.deserialize_keras_object(config.pop('encoder_out_size'))
         return cls(kernel_size, latent_space_dims,
                    encoder_out_size, **config)
-
-    @tf.function
-    def train_step(self, data, y_labels, optimizers_dict,
-                   label_sample, real_dist, n_classes):
-        # Unpack data
-        x_batch = data
-
-        # AE Gradient Tape
-        with tf.GradientTape() as ae_tape:
-            # Run the inputs through the AE (Encode->Decode)
-            reconstruction = self.decoder(self.encoder(x_batch),
-                                          training=True)
-            # Compute Reconstruction Loss
-            reconstruction_loss = tf.reduce_mean(tf.math.squared_difference(x_batch, reconstruction))
-        # Compute the gradients of the AE
-        ae_trainable_variables = self.encoder.trainable_variables + self.decoder.trainable_variables
-        ae_grads = ae_tape.gradient(reconstruction_loss, ae_trainable_variables)
-        optimizers_dict['ae'].apply_gradients(zip(ae_grads, ae_trainable_variables))
-
-        # Discriminator
-        with tf.GradientTape() as d_tape:
-            label_sample_one_hot = tf.one_hot(label_sample, n_classes)
-            real_dist_label = tf.concat([real_dist, label_sample_one_hot], axis=1)
-            # Run the input through the encoder
-            fake_dist = self.encoder(x_batch, training=True)
-            fake_dist_label = tf.concat([fake_dist, y_labels], axis=1)
-
-            # Run the latent vectors through the discriminator
-            _, real_logits = self.discriminator(real_dist_label, training=True)
-            _, fake_logits = self.discriminator(fake_dist_label, training=True)
-            # Discriminator loss
-            loss_real = tf.nn.sigmoid_cross_entropy_with_logits(
-                labels=tf.ones_like(real_logits), logits=real_logits)
-            loss_fake = tf.nn.sigmoid_cross_entropy_with_logits(
-                labels=tf.zeros_like(fake_logits), logits=fake_logits)
-            D_loss = tf.reduce_mean(loss_real + loss_fake)
-
-        # Compute the gradients of discriminator
-        d_grads = d_tape.gradient(D_loss, self.discriminator.trainable_variables)
-        optimizers_dict['discriminator'].apply_gradients(zip(d_grads,
-                                                             self.discriminator.trainable_variables))
-
-        with tf.GradientTape() as g_tape:
-            encoder_output = self.encoder(x_batch, training=True)
-            encoder_output_label = tf.concat([encoder_output, y_labels], axis=1)
-            _, disc_fake_logits = self.discriminator(encoder_output_label, training=True)
-            # Generator Loss
-            G_loss = tf.reduce_mean(
-                tf.nn.sigmoid_cross_entropy_with_logits(
-                    labels=tf.ones_like(disc_fake_logits), logits=disc_fake_logits))
-        # Compute the gradients of generator
-        g_grads = g_tape.gradient(G_loss, self.encoder.trainable_variables)
-        optimizers_dict['encoder'].apply_gradients(zip(g_grads, self.encoder.trainable_variables))
-
-        total_loss = reconstruction_loss + G_loss + D_loss
-
-        # Update loss trackers
-        self.total_loss_tracker.update_state(total_loss)
-        self.reconstruction_loss_tracker.update_state(reconstruction_loss)
-        self.D_loss_tracker.update_state(D_loss)
-        self.G_loss_tracker.update_state(G_loss)
-
-        # Inside your training loop, after calculating total_loss
-        with self.writer.as_default():
-            tf.summary.scalar('Total Loss', total_loss, step=self.optimizer.iterations)
-            tf.summary.scalar('G Loss', G_loss, step=self.optimizer.iterations)
-            tf.summary.scalar('D Loss', D_loss, step=self.optimizer.iterations)
-            self.writer.flush()
-        return {
-            "total_loss": self.total_loss_tracker.result(),
-            "reconstruction_loss": self.reconstruction_loss_tracker.result(),
-            "G_loss": self.G_loss.result(),
-            "D_loss": self.D_loss.result()
-        }
 
     def compile(self, **kwargs):
         """
