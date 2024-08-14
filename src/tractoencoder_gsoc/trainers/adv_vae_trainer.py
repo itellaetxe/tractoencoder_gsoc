@@ -1,8 +1,10 @@
 import os
+import copy
 import datetime
 
 import numpy as np
 import tensorflow as tf
+from tensorflow.keras.callbacks import ModelCheckpoint, CallbackList
 
 from tractoencoder_gsoc.data_loader import DataLoader
 from tractoencoder_gsoc.prior import PriorFactory
@@ -83,23 +85,47 @@ def train_all_steps(
     n_classes,
     data_loader,
     prior_factory,
-    log_dir
+    output_dir
 ):
     """"Training of all batches `n_epochs` times.
     Creates and saves training results and logs
     Tensorboard metrics in the `log_dir` directory.
     """
-
-    log_dir = os.path.join(log_dir, datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
+    log_dir = os.path.join(output_dir, "logs", datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
     summary_writer = tf.summary.create_file_writer(logdir=log_dir)
+    _callbacks = [ModelCheckpoint(filepath=os.path.join(output_dir, "model_best.keras"),
+                                  monitor='total_loss',
+                                  save_weights_only=False,
+                                  save_best_only=True,
+                                  mode='auto',
+                                  save_freq='epoch',
+                                  verbose=1)]
+    callbacks = CallbackList(_callbacks, add_history=True, model=model)
+    logs = {}
 
     reconst_loss_vec = tf.metrics.Mean()
     discriminator_loss_vec = tf.metrics.Mean()
     encoder_loss_vec = tf.metrics.Mean()
     total_loss_vec = tf.metrics.Mean()
     latent_space_dims = model.encoder.output_shape[-1]
+
+    # Manual best model save
+    best_loss = np.inf
+    prev_loss = np.inf
+    best_model = {}  # To save the model and in which epoch it was saved
+    best_model["model"] = None
+    best_model["epoch"] = None
+
+    # Training begins
+    callbacks.on_train_begin(logs=logs)
+
     for epoch in range(n_epochs):
+        # Epoch begins
         for batch_no, data in enumerate(train_ds):
+            # Train step (batch) begins
+            callbacks.on_batch_begin(batch=batch_no, logs=logs)
+            callbacks.on_train_batch_begin(batch=batch_no, logs=logs)
+
             x_batch = data["streamlines"]
             y_labels = data["label"]
             attribute = data[data_loader.attribute_key]
@@ -141,6 +167,12 @@ def train_all_steps(
                     step=optimizers_dict["discriminator"].iterations,
                 )
 
+            # Train step (batch) ends
+            callbacks.on_batch_end(batch=batch_no, logs=logs)
+            callbacks.on_train_batch_end(batch=batch_no, logs=logs)
+
+        # Epoch ends
+        callbacks.on_epoch_end(epoch=epoch, logs=logs)
         print(
             "Epoch: {} total_loss: {} gan_loss: {}, discriminator_loss: {} encoder_loss: {}".format(
                 epoch,
@@ -150,6 +182,19 @@ def train_all_steps(
                 encoder_loss_vec.result(),
             )
         )
+        # If the current loss is less than the best loss, save the model
+        if total_loss_vec.result() < best_loss:
+            best_loss = total_loss_vec.result()
+            best_model["model"] = copy.deepcopy(model)
+            best_model["epoch"] = epoch
+
+    # Train ends
+    callbacks.on_train_end(logs=logs)
+
+    # When training ends, inform the user about the best model
+    print(f"INFO: Best model happened at epoch {best_model['epoch']}")
+
+    return best_model["model"]
 
 
 def train_model(args):
@@ -170,7 +215,7 @@ def train_model(args):
     }
 
     # Training
-    train_all_steps(
+    best_model = train_all_steps(
         adv_vae,
         optimizers_dict,
         train_ds,
@@ -179,5 +224,7 @@ def train_model(args):
         data_loader.n_classes,
         data_loader,
         prior_factory,
-        args.log_dir,
+        args.output_dir,
     )
+
+    return best_model

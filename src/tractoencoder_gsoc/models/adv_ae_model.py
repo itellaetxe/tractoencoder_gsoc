@@ -109,7 +109,7 @@ class JH_Adv_AE(Model):
         self.name = "JH_Adv_AE"
 
     def get_config(self):
-        base_config = super(JH_Adv_AE).get_config()
+        base_config = super().get_config()
         config = {
             "kernel_size": keras.saving.serialize_keras_object(self.kernel_size),
             "latent_space_dims": keras.saving.serialize_keras_object(self.latent_space_dims),
@@ -122,7 +122,7 @@ class JH_Adv_AE(Model):
         kernel_size = keras.saving.deserialize_keras_object(config.pop('kernel_size'))
         latent_space_dims = keras.saving.deserialize_keras_object(config.pop('latent_space_dims'))
         encoder_out_size = keras.saving.deserialize_keras_object(config.pop('encoder_out_size'))
-        return cls(kernel_size, latent_space_dims,
+        return cls(latent_space_dims, kernel_size,
                    encoder_out_size, **config)
 
     def compile(self, **kwargs):

@@ -171,17 +171,17 @@ def write_model_specs(spec_file: str, model, arguments,
                 f.write(f"## Layer: {weight.path}\n")
 
     # Write the training history to the same file
-    history_keys = list(train_history.history.keys())
-    hist = train_history.history
-    epochs = train_history.epoch
-    history_text = ""
-    for i in range(len(epochs)):
-        history_text += f"[Epoch {epochs[i]}] "
-        for key in history_keys:
-            history_text += (f"{key} = {str(hist[key][i])[:11]} || ")
-        history_text += "\n"
-
     if train_history is not None:
+        history_keys = list(train_history.history.keys())
+        hist = train_history.history
+        epochs = train_history.epoch
+        history_text = ""
+        for i in range(len(epochs)):
+            history_text += f"[Epoch {epochs[i]}] "
+            for key in history_keys:
+                history_text += (f"{key} = {str(hist[key][i])[:11]} || ")
+            history_text += "\n"
+
         with open(spec_file, "a") as f:
             f.write("\n### Training History:\n")
             f.write(history_text + "\n\n")
