@@ -149,6 +149,10 @@ class JH_Adv_AE(Model):
 
         return decoded
 
+    def generate(self, class_variable, attribute):
+        # TODO
+        pass
+
     def fit(self, *args, **kwargs):
         """_summary_
         # TODO: Complete docstring
