@@ -3,20 +3,32 @@ import numpy as np
 import nibabel as nib
 import tensorflow as tf
 import keras
-from keras import layers, Sequential, Layer, Model, initializers
+from keras import layers, Layer, Model, initializers
 from tractoencoder_gsoc.utils import pre_pad
 from tractoencoder_gsoc.utils import dict_kernel_size_flatten_encoder_shape
 
 
-# TODO (general): Add typing suggestions to methods where needed/advised/possible
-# TODO (general): Add docstrings to all functions and mthods
-
-
 class Encoder(Layer):
     def __init__(self, latent_space_dims=32, kernel_size=3, **kwargs):
+        """
+        Encoder block of the AutoEncoder.
+        Encodes the input data into a latent
+        space representation.
+
+        Parameters
+        ----------
+        latent_space_dims : int, optional
+            Number of dimensions of the latent
+            space where the data will be encoded.
+            Default: 32
+        kernel_size : int, optional
+            Length of the 1D kernel used in the
+            convolutional layers.
+            Default: 3
+        """
         super(Encoder, self).__init__(**kwargs)
 
-        # TODO: Add comments to the architecture of the model
+        # Parameter Initialization
         self.latent_space_dims = latent_space_dims
         self.kernel_size = kernel_size
 
@@ -100,6 +112,26 @@ class Encoder(Layer):
         return cls(latent_space_dims, kernel_size, **config)
 
     def call(self, input_data):
+        """
+        Run the input data through the Encoder.
+        Encode the input_data into a latent
+        space representation.
+
+        Parameters
+        ----------
+        input_data : tf.Tensor or np.ndarray
+            Data to run through the Encoder.
+            Should be of the shape of a standard
+            streamline with 256 points:
+            (n_samples, 256, 3).
+
+        Returns
+        -------
+        tf.Tensor
+            Encoded input in the latent space,
+            with the shape
+            (n_samples, latent_space_dims).
+        """
         x = input_data
 
         h1 = tf.nn.relu(self.encod_conv1(x))
@@ -121,12 +153,29 @@ class Encoder(Layer):
 
 class Decoder(Layer):
     def __init__(self, encoder_out_size, kernel_size=3, **kwargs):
+        """
+        Decoder block of the AutoEncoder. Decodes
+        the latent space representation to the original
+        data space. The encoder_out_size parameter is
+        used to reshape the output of the fully connected
+        layer to match the size of the convolutional
+        output of the Encoder block.
+
+        Parameters
+        ----------
+        encoder_out_size : tuple
+            Size of the convolutional output of the
+            Encoder block.
+        kernel_size : int, optional
+            Length of the 1D kernel used in the
+            convolutional layers.
+            Default: 3
+        """
         super(Decoder, self).__init__(**kwargs)
         self.kernel_size = kernel_size
         self.encoder_out_size = encoder_out_size
 
         self.fc2 = layers.Dense(8192, name="fc2")
-        # TODO (general): Add comments to the architecture of the model
         self.decod_conv1 = pre_pad(
             layers.Conv1D(512, self.kernel_size, strides=1, padding='valid',
                           name="decoder_conv1")
@@ -172,6 +221,25 @@ class Decoder(Layer):
         return cls(encoder_out_size, kernel_size, **config)
 
     def call(self, input_data):
+        """
+        Run the input data through the Decoder.
+        Decode the latent space representation
+        to the original data space.
+
+        Parameters
+        ----------
+        input_data : tf.Tensor or np.ndarray
+            Data to run through the decoder.
+            Should be of the shape of the latent
+            space: (n_samples, latent_space_dims).
+
+        Returns
+        -------
+        tf.Tensor
+            Decoded input in the original
+            data space, with the shape
+            (n_samples, 256, 3).
+        """
         z = input_data
         fc = self.fc2(z)
 
@@ -195,88 +263,149 @@ class Decoder(Layer):
 
 
 def init_model(latent_space_dims=32, kernel_size=3):
+    r"""
+    Initialize the model with the given latent
+    space dimensions and kernel size.
+    Instantiates the Encoder, the Decoder, and
+    returns the model comprising both blocks.
+
+    Parameters
+    ----------
+    latent_space_dims : int, optional
+        Number of dimensions of the latent
+        space where the data will be encoded
+        Default: 32
+    kernel_size : int, optional
+        Length of the 1D kernel used in the
+        convolutional layers of the Encoder
+        and the Decoder
+        Default: 3
+
+    Returns
+    -------
+    keras.Model
+        Encoder model
+    keras.Model
+        Decoder model
+    tuple
+        Size of the convolutional output of
+        the Encoder block.
+    """
     input_data = keras.Input(shape=(256, 3), name='input_streamline')
 
     # encode
     encoder = Encoder(latent_space_dims=latent_space_dims,
                       kernel_size=kernel_size)
     encoded = encoder(input_data)
+    # Instantiate encoder model
+    model_encoder = Model(input_data, encoded, name="Encoder")
 
     # decode
     decoder = Decoder(encoder.encoder_out_size,
                       kernel_size=kernel_size)
     decoded = decoder(encoded)
     output_data = decoded
+    # Instantiate decoder model
+    model_decoder = Model(encoded, decoded, name="Decoder")
 
     # Instantiate model and name it
-    model = Model(input_data, output_data)
-    model.name = 'IncrFeatStridedConvFCUpsampReflectPadAE'
-    return model
+    return model_encoder, model_decoder, encoder.encoder_out_size
 
 
-class IncrFeatStridedConvFCUpsampReflectPadAE():
-    # TODO: Complete docstring
-    """Strided convolution-upsampling-based AE using reflection-padding and
+class IncrFeatStridedConvFCUpsampReflectPadAE(Model):
+    """
+    Strided convolution-upsampling-based
+    AutoEncoder using reflection-padding and
     increasing feature maps in decoder.
+    Architecture based on Jon Haitz Legarreta Gorroño's
+    PyTorch implementation, from his FINTA [1] work.
+    [1] https://doi.org/10.1016/j.media.2021.102126
     """
 
-    def __init__(self, latent_space_dims=32, kernel_size=3):
+    def __init__(self, latent_space_dims=32, kernel_size=3,
+                 **kwargs):
+        super(IncrFeatStridedConvFCUpsampReflectPadAE, self).__init__(**kwargs)
 
         # Parameter Initialization
         self.kernel_size = kernel_size
         self.latent_space_dims = latent_space_dims
-        self.input = keras.Input(shape=(256, 3), name='input_streamline')
+        self.input = keras.Input(shape=(256, 3), name="input_streamline")
 
-        self.model = init_model(latent_space_dims=self.latent_space_dims,
-                                kernel_size=self.kernel_size)
+        model = init_model(latent_space_dims=self.latent_space_dims,
+                           kernel_size=self.kernel_size)
+        self.encoder = model[0]
+        self.decoder = model[1]
+        self.encoder_out_size = model[2]
 
-    def __call__(self, x):
-        return self.model(x)
+        self.name = "IncrFeatStridedConvFCUpsampReflectPadAE"
+
+    def get_config(self):
+        base_config = super().get_config()
+        config = {
+            "latent_space_dims": keras.saving.serialize_keras_object(self.latent_space_dims),
+            "kernel_size": keras.saving.serialize_keras_object(self.kernel_size),
+            "encoder_out_size": keras.saving.serialize_keras_object(self.encoder_out_size),
+        }
+        return {**base_config, **config}
+
+    @classmethod
+    def from_config(cls, config):
+        latent_space_dims = keras.saving.deserialize_keras_object(config.pop('latent_space_dims'))
+        encoder_out_size = keras.saving.deserialize_keras_object(config.pop('encoder_out_size'))
+        kernel_size = keras.saving.deserialize_keras_object(config.pop('kernel_size'))
+        return cls(latent_space_dims, kernel_size, encoder_out_size, **config)
+
+    def call(self, x):
+        r"""
+        Run the input streamlines 'x' through
+        the model (encoder -> decoder)
+
+        Parameters
+        ----------
+        x : tf.Tensor, np.ndarray
+            Tensor of shape (n_samples, 256, 3)
+            containing the input streamlines.
+
+        Returns
+        -------
+        tf.Tensor
+            Reconstruction of input streamlines
+            after passing through the model.
+        """
+        encoded = self.encoder(x)
+        decoded = self.decoder(encoded)
+
+        return decoded
 
     def compile(self, **kwargs):
+        r"""
+        Wrapper of the built in compile method
+        of the model, which configures the model
+        for training. Sets the optimizer weight
+        decay to the same value as in the PyTorch
+        implementation (FINTA [1]).
+        [1] https://doi.org/10.1016/j.media.2021.102126
         """
-        Configure the model for training
-        """
-        kwargs['optimizer'].weight_decay = 0.13
-        self.model.compile(**kwargs)
+        if 'optimizer' in kwargs:
+            if hasattr(kwargs['optimizer'], 'weight_decay'):
+                kwargs['optimizer'].weight_decay = 0.13
+            else:
+                print("Optimizer does not have a weight_decay attribute. Ignoring...")
 
-    def summary(self, **kwargs):
-        """
-        Get the summary of the model.
-        # TODO: Complete docstring
-        The summary is textual and includes information about:
-        The layers and their order in the model.
-        The output shape of each layer.
-        """
-        return self.model.summary(**kwargs)
+        # Call the superclass's compile with the modified kwargs
+        super().compile(**kwargs)
 
-    def fit(self, *args, **kwargs,):
-        """_summary_
-        # TODO: Complete docstring
-        Args:
-            x (_type_): _description_
-            y (_type_): _description_
-            batch_size (_type_, optional): _description_. Defaults to None.
-            epochs (int, optional): _description_. Defaults to 1.
-
-        Returns:
-            _type_: _description_
+    def fit(self, *args, **kwargs):
+        r"""
+        Wrapper of the built in fit method of the
+        model, which trains the model for a fixed
+        number of epochs. In case of inputing
+        streamlines as input, converts them to
+        numpy arrays.
         """
         if isinstance(kwargs['x'], nib.streamlines.ArraySequence):
             kwargs['x'] = np.array(kwargs['x'])
         if isinstance(kwargs['y'], nib.streamlines.ArraySequence):
             kwargs['y'] = np.array(kwargs['y'])
-        return self.model.fit(*args, **kwargs)
-        # TODO (perhaps): write train loop manually?
 
-    def save_weights(self, *args, **kwargs):
-        """_summary_
-        # TODO: Complete docstring
-        """
-        self.model.save_weights(*args, **kwargs)
-
-    def save(self, *args, **kwargs):
-        """_summary_
-        # TODO: Complete docstring
-        """
-        self.model.save(*args, **kwargs)
+        return super().fit(*args, **kwargs)

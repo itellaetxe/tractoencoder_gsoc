@@ -36,7 +36,8 @@ dependencies = [
     "torch == 2.3.1",
     "ipykernel == 6.29.4",
     "pre-commit == 3.7.1",
-    "ruff == 0.4.6"
+    "ruff == 0.4.6",
+    "pytest == 8.3.2",
 ]
 
 # [project.scripts] = [
