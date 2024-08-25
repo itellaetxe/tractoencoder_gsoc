@@ -9,17 +9,28 @@ import nibabel as nib
 import h5py
 
 from dipy.io.stateful_tractogram import Space
+from dipy.io.utils import (get_reference_info,
+                           is_header_compatible,
+                           create_nifti_header)
 from dipy.io.streamline import load_tractogram
 from dipy.tracking.streamline import Streamlines  # same as nibabel.streamlines.ArraySequence
 
 from keras import Layer, Sequential
-
 
 dict_kernel_size_flatten_encoder_shape = {1: 12288,
                                           2: 10240,
                                           3: 8192,
                                           4: 7168,
                                           5: 5120}
+
+
+def safe_exp(x):
+    # Safe exp operation to prevent exp from producing inf values
+    return tf.clip_by_value(tf.exp(x), -1e10, 1e10)
+
+
+def cross_entropy():
+    return tf.nn.sigmoid_cross_entropy_with_logits(from_logits=True)
 
 
 class ReflectionPadding1D(Layer):
@@ -36,7 +47,9 @@ def pre_pad(layer: Layer):
     return Sequential([ReflectionPadding1D(padding=1), layer])
 
 
-def read_data(tractogram_fname: str, img_fname: str = None):
+def read_data(tractogram_fname: str, img_fname: str = None,
+              trk_header_check: bool = True,
+              bbox_valid_check: bool = True):
     # Load the anatomical data
     if img_fname is None:
         img_header = nib.Nifti1Header()
@@ -47,8 +60,6 @@ def read_data(tractogram_fname: str, img_fname: str = None):
     # Load tractography data (assumes everything is resampled to 256 points)
     # from a TRK file
     to_space = Space.RASMM
-    trk_header_check = True
-    bbox_valid_check = True
     tractogram = load_tractogram(
         tractogram_fname,
         img_header,
@@ -59,6 +70,28 @@ def read_data(tractogram_fname: str, img_fname: str = None):
     strml = tractogram.streamlines
 
     return strml
+
+
+def compute_streamline_length(streamline):
+    # Calculate differences between consecutive points
+    diffs = np.diff(streamline, axis=0)
+
+    # Compute the Euclidean distance between consecutive points
+    distances = np.sqrt(np.sum(diffs ** 2, axis=1))
+
+    # Sum the distances to get the total length
+    total_length = np.sum(distances)
+
+    return total_length
+
+
+def get_streamline_lengths(input_streamlines) -> tf.Tensor:
+    # Get a tf.Tensor holding the streamline lengths ready to put it into the model
+    streamline_lengths = [compute_streamline_length(streamline) for streamline in input_streamlines.numpy()]
+    streamline_lengths = np.array(streamline_lengths).reshape(-1, 1)
+    streamline_lengths = tf.convert_to_tensor(streamline_lengths, dtype=tf.float32)
+
+    return streamline_lengths
 
 
 def prepare_tensor_from_file(tractogram_fname: str,
@@ -79,24 +112,28 @@ def prepare_tensor_from_file(tractogram_fname: str,
 def save_tractogram(streamlines: np.array,
                     tractogram_fname: str,
                     img_fname: str = None) -> None:
+
     # Load the anatomical data
     if img_fname is not None:
         img = nib.load(img_fname)
         img_header = img.header
+        affine = img_header.get_base_affine()
     else:
         img_header = nib.streamlines.trk.TrkFile.create_empty_header()
 
     # Save tractography data
     tractogram = nib.streamlines.Tractogram(streamlines=streamlines,
-                                            affine_to_rasmm=np.eye(4))
-    trkfile = nib.streamlines.TrkFile(tractogram, img_header)
-    nib.streamlines.save(tractogram=trkfile,
+                                            affine_to_rasmm=affine)
+    trk_file = nib.streamlines.TrkFile(tractogram=tractogram,
+                                       header=img_header)
+    nib.streamlines.save(tractogram=trk_file,
                          filename=tractogram_fname)
 
     return None
 
 
-def write_model_specs(spec_file: str, model, arguments) -> None:
+def write_model_specs(spec_file: str, model, arguments,
+                      train_history=None) -> None:
     if not os.path.exists(os.path.dirname(spec_file)):
         os.makedirs(os.path.dirname(spec_file))
 
@@ -133,50 +170,24 @@ def write_model_specs(spec_file: str, model, arguments) -> None:
             for weight in model.weights:
                 f.write(f"## Layer: {weight.path}\n")
 
+    # Write the training history to the same file
+    if train_history is not None:
+        history_keys = list(train_history.history.keys())
+        hist = train_history.history
+        epochs = train_history.epoch
+        history_text = ""
+        for i in range(len(epochs)):
+            history_text += f"[Epoch {epochs[i]}] "
+            for key in history_keys:
+                history_text += (f"{key} = {str(hist[key][i])[:11]} || ")
+            history_text += "\n"
+
+        with open(spec_file, "a") as f:
+            f.write("\n### Training History:\n")
+            f.write(history_text + "\n\n")
     print(f"INFO: Model specs written to {spec_file}")
 
     return None
-
-
-def load_h5_dataset(h5_fname: str, dataset_name: str = None) -> np.array:
-    with h5py.File(h5_fname, "r") as f:
-        data = f[dataset_name][()]
-
-    return data
-
-
-def process_arguments_hdf5() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Train the autoencoder model using HDF5 datasets.")
-    parser.add_argument("--input_dataset", type=str, help="Path to the input HDF5 file (.h5 file)")
-    parser.add_argument("--input_anat", type=str, help="Path to the input anatomical image (NIfTI file)")
-    parser.add_argument("--output_dir", type=str, help="Path to the output directory where results will be saved")
-    parser.add_argument("--batch_size", type=int, default=20, help="Batch size for training the model")
-    parser.add_argument("--epochs", type=int, default=10, help="Number of epochs for training the model")
-    parser.add_argument("--latent_space_dims", type=int, default=32, help="Number of dimensions in the latent space")
-    parser.add_argument("--kernel_size", type=int, default=3, help="Size of the kernel for the convolutional layers")
-    parser.add_argument("--learning_rate", type=float, default=0.00068, help="Learning rate for the optimizer")
-    parser.add_argument("--seed", type=int, default=2208, help="Seed for reproducibility")
-    args = parser.parse_args()
-
-    # Sanity check of CLI arguments
-    if not os.path.exists(args.input_dataset):
-        raise FileNotFoundError(f"Input dataset not found at {args.input_dataset}")
-    if not os.path.exists(args.input_anat):
-        raise FileNotFoundError(f"Input anatomical image not found at {args.input_anat}")
-
-    if os.path.exists(args.output_dir):
-        # If the output directory exists and it is NOT empty, raise Error because we do not want to overwrite
-        if len(os.listdir(args.output_dir)) != 0:
-            raise FileExistsError(f"Output directory {args.output_dir} is not empty. Please provide an empty directory")
-        else:
-            print(f"WARNING: Empty output directory found at {args.output_dir}")
-    # If the output directory does not exist, create it:
-    else:
-        os.makedirs(args.output_dir)
-
-    print(f"INFO: Your results will be stored at {args.output_dir}")
-
-    return args
 
 
 def process_arguments_trk() -> argparse.Namespace:
@@ -191,13 +202,22 @@ def process_arguments_trk() -> argparse.Namespace:
     parser.add_argument("--learning_rate", type=float, default=0.00068, help="Learning rate for the optimizer")
     parser.add_argument("--seed", type=int, default=2208, help="Seed for reproducibility")
     parser.add_argument("--beta", type=float, default=1.0, help="Beta parameter for the KL divergence loss")
+    parser.add_argument("--log_dir", type=str, default="logs",
+                        help="Log directory (Tensorboard)")
+    parser.add_argument("--gm_x_stddev", type=float, default=0.5,
+                        help="Gaussian mixture prior: standard deviation for the x coord")
+    parser.add_argument("--gm_y_stddev", type=float, default=0.1,
+                        help="Gaussian mixture prior shape: standard deviation for the y coord")
+    parser.add_argument("--prior_type", type=str, default="gaussian_mixture",
+                        choices=["gaussian_mixture", "swiss_roll"],
+                        help="Type of target prior distribution")
     args = parser.parse_args()
 
     # Sanity check of CLI arguments
     for trk_path in args.input_trk:
         if not os.path.exists(trk_path):
             raise FileNotFoundError(f"Input dataset not found at {trk_path}")
-    if not os.path.exists(args.input_anat):
+    if hasattr(args, "input_anat") and not os.path.exists(args.input_anat):
         raise FileNotFoundError(f"Input anatomical image not found at {args.input_anat}")
 
     if os.path.exists(args.output_dir):
@@ -213,194 +233,3 @@ def process_arguments_trk() -> argparse.Namespace:
     print(f"INFO: Your results will be stored at {args.output_dir}")
 
     return args
-
-
-class UpdateEpochCallback(tf.keras.callbacks.Callback):
-    def __init__(self, model):
-        super(UpdateEpochCallback, self).__init__()
-        self.model = model
-
-    def on_epoch_begin(self, epoch, logs=None):
-        # Update the model's current_epoch property at the start of each epoch
-        self.model.current_epoch.assign(epoch)
-
-
-# TODO: Translate function to TF
-# def test_ae_model(tractogram_fname: str, img_fname: str, device):
-#     # tractogram_fname is your trk, img_fname is the corresponding nii.gz anatomical reference file (e.g. T1w)
-#     strml_tensor = prepare_tensor_from_file(tractogram_fname, img_fname)
-#     strml_tensor = strml_tensor.to(device)
-
-#     # Instantiate the model
-#     model = AEModel()
-#     # A full forward pass
-#     y = model(strml_tensor)
-
-#     print(f"Input shape: {strml_tensor.shape}")
-#     print(f"Model: {model}")
-#     print(f"Output shape: {y.shape}")
-
-# TODO: Translate function to TF
-# def test_ae_model_loader(tractogram_fname, img_fname, device):
-#     # Use a loader for large datasets with which doing a complete forward and
-#     # backward pass would not be possible due to GPU memory constraints.
-#     # Note that in this case, all data is sent to the GPU, which may not be
-#     # possible for large tractography files. That's why we used to use HDF5
-#     # files and custom data loaders that would only fetch the batch size data
-#     # from them.
-
-#     # tractogram_fname is your trk, img_fname is the corresponding nii.gz anatomical reference file (e.g. T1w)
-#     strml_tensor = prepare_tensor_from_file(tractogram_fname, img_fname)
-#     strml_tensor = strml_tensor.to(device)
-
-#     # Build a data loader
-#     batch_size = 1000  # your batch_size
-#     loader = torch.utils.data.DataLoader(
-#         strml_tensor, batch_size=batch_size, shuffle=False
-#     )
-
-#     # Instantiate the model
-#     model = AEModel()
-
-#     reconstruction_loss = nn.MSELoss(reduction="sum")
-#     loss = 0
-
-#     strml_data = []
-#     for _, data in enumerate(loader):
-
-#         # Forward pass and compute loss
-#         y = model(data)
-#         batch_loss = reconstruction_loss(y, data)
-#         loss += batch_loss.item()
-
-#         # Undo the permutation
-#         y = y.permute(0, 2, 1).detach().cpu().numpy()
-#         strml_data.extend(y)
-
-#     # Normalize the loss value to the size of the dataset
-#     loss /= len(loader.dataset)
-
-#     strml_rec = Streamlines(strml_data)
-
-#     print(f"Input shape: {strml_tensor.shape}")
-#     print(f"Model: {model}")
-#     print(
-#         f"Output shape: {strml_rec.shape}"
-#     )  # Should be the same as input. Adapt, not sure if Streamlines has shape property
-
-#     # Eventually, return strml_rec, loss in your scripts to check the loss and
-#     # write the reconstructed streamlines if needed for visual inspection
-
-
-# TODO: Translate function to TF
-# def load_model_weights(weights_fname, device, lr, weight_decay):
-#     # Instantiate the model
-#     model = AEModel()
-
-#     # Create the optimizer
-#     optimizer = optim.Adam(
-#         model.parameters(),
-#         lr=lr,
-#         weight_decay=weight_decay,
-#     )
-
-#     checkpoint = torch.load(weights_fname, map_location=device)
-#     model.load_state_dict(checkpoint["state_dict"])
-
-#     optimizer.load_state_dict(checkpoint["optimizer"])
-#     epoch = model.load_state_dict(checkpoint["epoch"])  # best epoch
-#     lowest_loss = checkpoint["lowest_loss"]
-
-#     return model, optimizer, epoch, lowest_loss
-
-
-# # TODO: Translate function to TF
-# def train_ae_model(train_tractogram_fname, valid_tractogram_fname, img_fname, device, lr, weight_decay, epochs, weights_fname):
-#     # Use a loader for large datasets that cannot be entirely hold in the GPU
-#     # memory
-
-#     # tractogram_fname is your trk, img_fname is the corresponding nii.gz anatomical reference file (e.g. T1w)
-#     strml_tensor_train = prepare_tensor_from_file(train_tractogram_fname, img_fname)
-#     strml_tensor_valid = prepare_tensor_from_file(valid_tractogram_fname, img_fname)
-
-#     strml_tensor_train = strml_tensor_train.to(device)
-#     strml_tensor_valid = strml_tensor_valid.to(device)
-
-#     # Build the data loaders
-#     batch_size = 1000  # your batch_size
-#     train_loader = torch.utils.data.DataLoader(
-#         strml_tensor_train, batch_size=batch_size, shuffle=False
-#     )
-#     valid_loader = torch.utils.data.DataLoader(
-#         strml_tensor_valid, batch_size=batch_size, shuffle=False
-#     )
-
-#     # Instantiate the model
-#     model = AEModel()
-
-#     # Create the optimizer
-#     optimizer = optim.Adam(
-#         model.parameters(),
-#         lr=lr,
-#         weight_decay=weight_decay,
-#     )
-
-#     # Define the loss function
-#     reconstruction_loss = nn.MSELoss(reduction="sum")
-
-#     # As our loss is an MSE, worst possible loss is +infinity (or a very large number)
-#     lowest_loss = sys.float_info.max
-
-#     # Train model
-#     for epoch in range(epochs):
-#         # model.train()  # not sure if entirely necessary. We did not used to use it at the time.
-#         train_loss = 0
-#         valid_loss = 0
-#         # Train split
-#         for _, train_data in enumerate(train_loader):
-
-#             optimizer.zero_grad()
-#             train_y = model(train_data)
-#             batch_loss = reconstruction_loss(train_y, train_data)
-
-#             # Compute gradients and optimize model
-#             batch_loss.backward()
-#             train_loss += batch_loss.item()
-#             optimizer.step()
-
-#         # Normalize the loss value to the size of the dataset
-#         train_loss /= len(train_loader.dataset)
-
-#         # Validate
-#         model.eval()
-#         with torch.no_grad():
-#             for _, valid_data in enumerate(valid_loader):
-
-#                 valid_y = model(valid_data)
-#                 batch_loss = reconstruction_loss(valid_y, valid_data)
-#                 valid_loss += batch_loss.item()
-
-#             # Normalize the loss value to the size of the dataset
-#             valid_loss /= len(valid_loader.dataset)
-
-#             # Save model and weights if loss is lower. Note that in our case the
-#             # metric used to determine if a model is better is the
-#             # reconstruction loss, but in other tasks we may choose a different
-#             # metric, and the criterion might be "higher is better" (e.g. in a
-#             # segmentation task, where the loss has been defined Dice+CE, we
-#             # could define the validation split Dice as the metric).
-#             if valid_loss < lowest_loss:
-#                 lowest_loss = valid_loss
-#                 # Note that we are storing the best epoch here, but not the last
-#                 # epoch: thus, if the training is stopped, it will resume from
-#                 # the best epoch. It should resume from the last epoch. But
-#                 # at the time, we did not save this information. It should be
-#                 # easy to store an additional key, value pair, as this is simply
-#                 # a dictionary.
-#                 state = {
-#                     "epoch": epoch,
-#                     "state_dict": model.state_dict(),
-#                     "lowest_loss": lowest_loss,
-#                     "optimizer": optimizer.state_dict(),
-#                 }
-#                 torch.save(state, weights_fname)

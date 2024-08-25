@@ -1,3 +1,10 @@
+# TF logs
+logs/
+notebooks/logs/
+
+# GSoC 2024
+gsoc_final_post/
+
 # Data
 data/
 

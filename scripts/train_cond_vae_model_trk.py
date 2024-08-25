@@ -7,7 +7,7 @@ import subprocess
 import tensorflow as tf
 
 from tractoencoder_gsoc import utils as utils
-from tractoencoder_gsoc.models import vae_model
+from tractoencoder_gsoc.models import cond_vae_model
 
 
 if __name__ == "__main__":
@@ -19,18 +19,26 @@ if __name__ == "__main__":
     tf.random.set_seed(args.seed)
 
     # Example of using the model
-    model = vae_model.IncrFeatStridedConvFCUpsampReflectPadVAE(latent_space_dims=args.latent_space_dims,
-                                                               kernel_size=args.kernel_size)
+    model = cond_vae_model.IncrFeatStridedConvFCUpsampReflectPadCondVAE(latent_space_dims=args.latent_space_dims,
+                                                                        kernel_size=args.kernel_size)
 
     # Read data. If multiple trk files, read all and concatenate in numpy array along 1st axis
     if len(args.input_trk) == 1:
-        input_data = utils.prepare_tensor_from_file(args.input_trk[0], args.input_anat)
+        input_streamlines = utils.prepare_tensor_from_file(args.input_trk[0], args.input_anat)
     else:
-        input_data = []
+        input_streamlines = []
         for trk_path in args.input_trk:
-            input_data.append(utils.prepare_tensor_from_file(trk_path, args.input_anat).numpy())
+            input_streamlines.append(utils.prepare_tensor_from_file(trk_path, args.input_anat).numpy())
         # Concatenate along the first axis
-        input_data = tf.convert_to_tensor(np.concatenate(input_data, axis=0))
+        input_streamlines = tf.convert_to_tensor(np.concatenate(input_streamlines,
+                                                                axis=0))
+
+    streamline_lengths = utils.get_streamline_lengths(input_streamlines)
+    # Z-score streamline lengths
+    streamline_lengths = (streamline_lengths - np.mean(streamline_lengths)) / np.std(streamline_lengths)
+
+    print(f"INFO: Input streamlines shape: {input_streamlines.shape}")
+    print(f"INFO: Streamline lengths shape: {streamline_lengths.shape}")
 
     # Compile the model, then fit it (train it)
     model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=args.learning_rate),
@@ -38,27 +46,27 @@ if __name__ == "__main__":
 
     # Define training callbacks
     tensorboard_cb = tf.keras.callbacks.TensorBoard(log_dir=args.output_dir)
-    early_stopping_monitor = tf.keras.callbacks.EarlyStopping(monitor='reconstruction_loss',
+    early_stopping_monitor = tf.keras.callbacks.EarlyStopping(monitor='total_loss',
                                                               min_delta=0,
-                                                              patience=15,
+                                                              patience=args.epochs,
                                                               verbose=0,
                                                               mode='min',
                                                               baseline=None,
                                                               restore_best_weights=True
                                                               )
     # Save the training history
-    train_history = model.fit(x=input_data,
+    train_history = model.fit(x=[input_streamlines, streamline_lengths],
                               epochs=args.epochs,
                               batch_size=args.batch_size,
                               callbacks=[tensorboard_cb, early_stopping_monitor])
+
+    # Run the input data through the model, convert it to a np.array
+    y = model(input_streamlines).numpy()
 
     # Save the model
     model_fname = os.path.join(args.output_dir, "model.weights.h5")
     model.save_weights(model_fname)
     model.save(os.path.join(args.output_dir, "model_final.keras"))
-
-    # Run the input data through the model, convert it to a np.array
-    y = model(input_data).numpy()
 
     # Save the tractogram
     output_trk_fname = os.path.join(args.output_dir, "output.trk")
@@ -69,7 +77,8 @@ if __name__ == "__main__":
 
     # Write the model specs to a file for future reference
     spec_file = os.path.join(args.output_dir, "model_specs.txt")
-    utils.write_model_specs(spec_file=spec_file, model=model, arguments=args)
+    utils.write_model_specs(spec_file=spec_file, model=model, arguments=args,
+                            train_history=train_history)
 
     # Save a screenshot of the input and the output using dipy_horizon
     input_screenshot_fname = os.path.join(args.output_dir, "input_view.png")
