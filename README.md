@@ -1,5 +1,9 @@
-# tractoencoder_gsoc
-Translation of Jon Haitz AutoEncoder to TF-Keras. Training and comparison experiments.
+# TractoEncoder_GSoC
+
+### Tractogram (Auto)Encoder - Google Summer of Code 2024.
+Repo to include my work of Google Summer of Code 2024, of the project: [AI/ML in Diffusion MRI processing](https://github.com/dipy/dipy/wiki/Google-Summer-of-Code-2024#project-5-project-ideas-using-aiml-in-diffusion-mri-processing).
+
+Project proposal link: [DIPY-Conditional Tractogram Generation Based on age and neurodegeneration using autoencoder networks](https://summerofcode.withgoogle.com/myprojects/details/BpY78ovV)
 
 ## How to install
 
